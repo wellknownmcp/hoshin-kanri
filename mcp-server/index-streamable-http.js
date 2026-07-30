@@ -34,8 +34,51 @@ const API_BASE = process.env.API_BASE_URL || 'http://localhost:3007';
 const PUBLIC_URL = process.env.OAUTH_ISSUER || API_BASE;
 const WWW_AUTHENTICATE = `Bearer resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource"`;
 
-// Session management: sessionId → { transport, server, authToken, organizationId }
+// Session management: sessionId → { transport, server, authToken, organizationId,
+// organizationName, lastSeen }
 const transports = new Map();
+
+// Clients are supposed to close their session with DELETE /mcp, and often do
+// not: a browser tab closes, a laptop sleeps, a network drops. Without an idle
+// sweep every abandoned session keeps its transport, its MCP server instance and
+// its bearer token alive for the lifetime of the process.
+const SESSION_IDLE_MS = Number(process.env.MCP_SESSION_IDLE_MS || 30 * 60 * 1000);
+const SESSION_SWEEP_MS = Number(process.env.MCP_SESSION_SWEEP_MS || 5 * 60 * 1000);
+
+async function closeSession(sessionId, session, reason) {
+  transports.delete(sessionId);
+  try {
+    await session.transport.close();
+  } catch (error) {
+    console.error(`Session ${sessionId}: transport close failed (${reason}):`, error.message);
+  }
+  try {
+    await session.server.close();
+  } catch (error) {
+    console.error(`Session ${sessionId}: server close failed (${reason}):`, error.message);
+  }
+}
+
+async function sweepIdleSessions(now = Date.now()) {
+  const expired = [];
+  for (const [sessionId, session] of transports) {
+    if (session.activeStreams > 0) continue;
+    if (now - session.lastSeen > SESSION_IDLE_MS) expired.push([sessionId, session]);
+  }
+
+  for (const [sessionId, session] of expired) {
+    await closeSession(sessionId, session, 'idle');
+    console.log(`Session expired after inactivity: ${sessionId} (org: ${session.organizationName})`);
+  }
+
+  return expired.length;
+}
+
+const sweepTimer = setInterval(() => {
+  sweepIdleSessions().catch((error) => console.error('Session sweep failed:', error.message));
+}, SESSION_SWEEP_MS);
+// Never hold the event loop open just to sweep.
+sweepTimer.unref();
 
 // Express app
 const app = express();
@@ -981,6 +1024,7 @@ app.get('/health', (req, res) => {
     status: 'ok',
     service: 'hoshin-mcp',
     version: VERSION,
+    sessions: transports.size,
     timestamp: new Date().toISOString()
   });
 });
@@ -1038,14 +1082,20 @@ app.post('/mcp', async (req, res) => {
         server,
         authToken: token,
         organizationId: authInfo.organizationId,
-        organizationName: authInfo.organizationName
+        organizationName: authInfo.organizationName,
+        lastSeen: Date.now(),
+        // An SSE stream can legitimately sit quiet for a long time; a session
+        // holding one open is not idle and must survive the sweep.
+        activeStreams: 0
       };
       transports.set(sessionId, session);
 
       // Connect server to transport
       await server.connect(transport);
 
-      console.log(`New MCP session: ${sessionId} (org: ${authInfo.organizationName})`);
+      console.log(`New MCP session: ${sessionId} (org: ${authInfo.organizationName}, ${transports.size} live)`);
+    } else {
+      session.lastSeen = Date.now();
     }
 
     // Set session ID header
@@ -1074,6 +1124,13 @@ app.get('/mcp', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('Mcp-Session-Id', sessionId);
 
+  session.lastSeen = Date.now();
+  session.activeStreams++;
+  res.on('close', () => {
+    session.activeStreams = Math.max(0, session.activeStreams - 1);
+    session.lastSeen = Date.now();
+  });
+
   // Handle SSE
   await session.transport.handleRequest(req, res);
 });
@@ -1084,9 +1141,8 @@ app.delete('/mcp', async (req, res) => {
   const session = sessionId ? transports.get(sessionId) : null;
 
   if (session) {
-    await session.transport.close();
-    transports.delete(sessionId);
-    console.log(`Session terminated: ${sessionId}`);
+    await closeSession(sessionId, session, 'client DELETE');
+    console.log(`Session terminated: ${sessionId} (${transports.size} live)`);
   }
 
   res.status(204).end();

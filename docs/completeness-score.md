@@ -5,10 +5,15 @@ agent cannot answer from prose: **is this X-Matrix actually coherent, or does it
 merely look filled in?**
 
 Implemented as pure functions in
-[`mcp-server/lib/completeness.js`](../mcp-server/lib/completeness.js), shared
-verbatim between the local JSON store and the hosted API — a matrix scores the
-same in sovereign mode as in the cloud. Exposed as the MCP tool
-`get_matrix_completeness` and as `GET /api/matrices/:id/completeness`.
+[`mcp-server/lib/completeness.js`](../mcp-server/lib/completeness.js) and, in
+the web application, in its TypeScript twin — a separate npm package cannot
+import the app's sources, so the engine exists twice and a test in the web
+application asserts that both produce the same score, the same level and the
+same suggestion codes for the same matrix. A matrix scores identically in
+sovereign mode and in the cloud, or CI fails.
+
+Exposed as the MCP tool `get_matrix_completeness` and as
+`GET /api/matrices/:id/completeness`.
 
 This document is the contract. Where it disagrees with the code, the code wins
 and this document is a bug.
@@ -220,22 +225,55 @@ your own mapping for display. Renaming them would break existing consumers.
       ]
     }
   },
-  // Known gap: suggestion and aiContext strings are emitted in French today,
-  // while the rest of the agent-facing surface is English. Tracked as an issue.
   "suggestions": [
-    "Ajouter 1 élément(s) dans Initiatives pour atteindre le minimum recommandé",
-    "Lier \"Initiative X\" (Initiatives) à un élément adjacent",
-    "La vision \"Product innovation\" n'a pas de chaîne complète (manque: initiatives)",
-    "\"Objective A\" manque un indicateur de performance (leading)"
+    {
+      "code": "coverage.low",
+      "params": { "quadrant": "south", "count": 1 },
+      "message": "Add 1 element(s) to Initiatives (South) to reach the recommended minimum"
+    },
+    {
+      "code": "orphans.one",
+      "params": { "quadrant": "south", "title": "Initiative X" },
+      "message": "Link \"Initiative X\" (Initiatives (South)) to an adjacent element"
+    },
+    {
+      "code": "chains.incomplete",
+      "params": { "vision": "Product innovation", "missing": ["south"] },
+      "message": "Vision \"Product innovation\" has no complete chain (missing: Initiatives (South))"
+    }
   ],
-  "aiContext": "Matrice \"Strategy 2027\" - Score 72/100 (Bon). …"
+  "aiContext": "Matrix \"Strategy 2027\" — score 72/100 (Good). Elements: 3 vision(s), … "
 }
 ```
 
 The `east.details` / `south.details` arrays are abridged above; each holds one
 entry per analysed element, in the same shape as `unbalancedElements`.
 
-`suggestions` are emitted in metric order — coverage, density, orphans, chains,
+## The suggestion contract
+
+Suggestions are machine-readable first. `message` is the English rendering — the
+agent surface, relayed verbatim to assistants. `code` and `params` let a UI
+render the same suggestion in the reader's language, the same way the API error
+contract works: localise from the code, never from the message.
+
+`params` carry **raw keys, never rendered labels**: a quadrant travels as
+`north`, a chain's missing hops as `["south"]`. A server that interpolated
+"Initiatives (South)" into the string would make the sentence untranslatable —
+which is precisely how these strings ended up locked to one language before.
+
+| Code | Params |
+|---|---|
+| `coverage.empty` | `quadrant` |
+| `coverage.low` | `quadrant`, `count` — elements missing to reach the *recommended* range |
+| `density.sparse` | `corner`, `from`, `to` |
+| `orphans.one` | `quadrant`, `title` |
+| `orphans.many` | `quadrant`, `count` |
+| `chains.incomplete` | `vision`, `missing` (quadrant keys) |
+| `balance.unclassified` | `count` |
+| `balance.noResult`, `balance.noPerformance` | — |
+| `balance.missingBoth`, `balance.missingResult`, `balance.missingPerformance` | `title` |
+
+Suggestions are emitted in metric order — coverage, density, orphans, chains,
 indicator balance — and capped at 12, so the list is stable across runs rather
 than ranked by leverage. Use the per-metric `score` values if you need to
 prioritise. `aiContext` is a prose digest an assistant can quote without

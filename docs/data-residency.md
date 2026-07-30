@@ -55,19 +55,23 @@ agent renders a self-contained interactive snapshot that you send deliberately,
 once, to a recipient you chose — rather than a URL that keeps serving your
 strategy until you remember to revoke it.
 
-## Why the business logic is shared, not forked
+## Why the business logic is kept in lockstep
 
-`lib/completeness.js` — the scoring engine — is imported by both the local store
-and the hosted API. Not copied: imported.
+`lib/completeness.js` — the scoring engine — is pure: elements and correlations
+in, a score out, no I/O. The local store and the hosted API run the same
+algorithm, and the web application holds a TypeScript twin of it because an npm
+package cannot import the app's sources.
 
-If the score were reimplemented per mode, local mode would drift into a
-second-class citizen within two releases, the sovereignty argument would quietly
-become a marketing claim, and the same matrix would score differently depending
-on where it happened to be stored. So the rule is: **any new business logic
-stays pure and shared.** Local mode is either the same product or it is a lie.
+Two copies of anything drift. So a test in the web application feeds the same
+matrix to both and asserts an identical score, an identical level and an
+identical list of suggestion codes: if the hosted engine gains a rule the
+sovereign one lacks, CI fails rather than local mode quietly becoming a
+second-class citizen — which is how a sovereignty argument turns into a
+marketing claim. Local mode is either the same product or it is a lie.
 
-The same reasoning governs the tool and prompt schemas, shared across all three
-transports in [`lib/`](../mcp-server/lib/) with only the handlers differing.
+The same reasoning applies to the tool and prompt schemas, genuinely shared
+(imported, single copy) across all three transports in
+[`lib/`](../mcp-server/lib/), with only the handlers differing.
 
 ## The value split this reflects
 

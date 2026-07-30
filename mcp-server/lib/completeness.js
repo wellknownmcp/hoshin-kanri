@@ -405,33 +405,55 @@ function analyzeIndicatorLinks(elements, resultIndicators, performanceIndicators
   };
 }
 
+// `key` is a stable API identifier (French heritage — renaming it would break
+// existing consumers); `label` is the English gloss for the agent surface. A UI
+// localises from `key` via its own dictionary and ignores `label`.
 function getLevel(score) {
   if (score >= 86) return { key: 'excellent', label: 'Excellent' };
-  if (score >= 71) return { key: 'bon', label: 'Bon' };
+  if (score >= 71) return { key: 'bon', label: 'Good' };
   if (score >= 51) return { key: 'acceptable', label: 'Acceptable' };
   if (score >= 31) return { key: 'minimal', label: 'Minimal' };
-  return { key: 'incomplet', label: 'Incomplet' };
+  return { key: 'incomplet', label: 'Incomplete' };
 }
 
-function getQuadrantLabelFr(quadrant) {
+function getQuadrantLabel(quadrant) {
   const labels = {
-    north: 'Vision (Nord)',
-    east: 'Objectifs annuels (Est)',
-    south: 'Initiatives (Sud)',
-    west: 'KPIs (Ouest)'
+    north: 'Vision (North)',
+    east: 'Annual objectives (East)',
+    south: 'Initiatives (South)',
+    west: 'KPIs (West)'
   };
   return labels[quadrant] || quadrant;
 }
 
+/**
+ * Suggestions are machine-readable first: `code` + `params` let any UI render
+ * them in the reader's language, `message` is the English rendering relayed to
+ * the agent. `params` carry raw keys (a quadrant travels as `north`), never
+ * localised text — interpolating an English label into a translated sentence is
+ * the bug this shape prevents.
+ *
+ * Kept identical to src/lib/completeness.ts in the web app: the same matrix must
+ * score — and explain itself — the same way in sovereign mode and in the cloud.
+ */
 function generateSuggestions(coverage, density, orphans, chains, indicatorBalance) {
   const suggestions = [];
+  const push = (code, params, message) => suggestions.push({ code, params, message });
 
   for (const [quadrant, data] of Object.entries(coverage)) {
     if (quadrant === 'score') continue;
     if (data.status === 'empty') {
-      suggestions.push(`Ajouter au moins 1 élément dans le quadrant ${getQuadrantLabelFr(quadrant)}`);
+      push('coverage.empty', { quadrant }, `Add at least 1 element to the ${getQuadrantLabel(quadrant)} quadrant`);
     } else if (data.status === 'low') {
-      suggestions.push(`Ajouter ${data.min - data.count + 1} élément(s) dans ${getQuadrantLabelFr(quadrant)} pour atteindre le minimum recommandé`);
+      // `status: 'low'` means the quadrant clears its hard minimum but sits
+      // under the *recommended* range, which is what the message promises to
+      // close — measuring against `min` here produced "add 0 element(s)".
+      const count = IDEAL_COUNTS[quadrant].ideal.min - data.count;
+      push(
+        'coverage.low',
+        { quadrant, count },
+        `Add ${count} element(s) to ${getQuadrantLabel(quadrant)} to reach the recommended minimum`
+      );
     }
   }
 
@@ -439,7 +461,11 @@ function generateSuggestions(coverage, density, orphans, chains, indicatorBalanc
     if (corner === 'score') continue;
     if (data.level === 'sparse' && data.possible > 0) {
       const [q1, q2] = CORRELATION_PAIRS[corner];
-      suggestions.push(`Créer plus de corrélations entre ${getQuadrantLabelFr(q1)} et ${getQuadrantLabelFr(q2)}`);
+      push(
+        'density.sparse',
+        { corner, from: q1, to: q2 },
+        `Create more correlations between ${getQuadrantLabel(q1)} and ${getQuadrantLabel(q2)}`
+      );
     }
   }
 
@@ -451,38 +477,54 @@ function generateSuggestions(coverage, density, orphans, chains, indicatorBalanc
     }
     for (const [quadrant, titles] of Object.entries(orphansByQuadrant)) {
       if (titles.length === 1) {
-        suggestions.push(`Lier "${titles[0]}" (${getQuadrantLabelFr(quadrant)}) à un élément adjacent`);
+        push(
+          'orphans.one',
+          { quadrant, title: titles[0] },
+          `Link "${titles[0]}" (${getQuadrantLabel(quadrant)}) to an adjacent element`
+        );
       } else {
-        suggestions.push(`${titles.length} éléments orphelins dans ${getQuadrantLabelFr(quadrant)} à lier`);
+        push(
+          'orphans.many',
+          { quadrant, count: titles.length },
+          `${titles.length} orphan elements in ${getQuadrantLabel(quadrant)} to link`
+        );
       }
     }
   }
 
   for (const chain of chains.details) {
     if (!chain.complete && chain.missing.length > 0) {
-      const missingLabels = chain.missing.map(getQuadrantLabelFr).join(', ');
-      suggestions.push(`La vision "${chain.vision}" n'a pas de chaîne complète (manque: ${missingLabels})`);
+      const missingLabels = chain.missing.map(getQuadrantLabel).join(', ');
+      push(
+        'chains.incomplete',
+        { vision: chain.vision, missing: chain.missing },
+        `Vision "${chain.vision}" has no complete chain (missing: ${missingLabels})`
+      );
     }
   }
 
   if (indicatorBalance) {
     if (indicatorBalance.kpiStats.unclassified > 0) {
-      suggestions.push(`${indicatorBalance.kpiStats.unclassified} KPI(s) sans type défini (résultat ou performance)`);
+      push(
+        'balance.unclassified',
+        { count: indicatorBalance.kpiStats.unclassified },
+        `${indicatorBalance.kpiStats.unclassified} KPI(s) with no type set (result or performance)`
+      );
     }
     if (indicatorBalance.kpiStats.result === 0 && indicatorBalance.kpiStats.total > 0) {
-      suggestions.push(`Aucun indicateur de résultat (lagging) défini - ajouter des KPIs mesurant les outcomes`);
+      push('balance.noResult', {}, 'No result (lagging) indicator defined — add KPIs measuring outcomes');
     }
     if (indicatorBalance.kpiStats.performance === 0 && indicatorBalance.kpiStats.total > 0) {
-      suggestions.push(`Aucun indicateur de performance (leading) défini - ajouter des KPIs mesurant les processus`);
+      push('balance.noPerformance', {}, 'No performance (leading) indicator defined — add KPIs measuring processes');
     }
     const unbalanced = indicatorBalance.unbalancedElements.slice(0, 3);
     for (const el of unbalanced) {
       if (el.missing === 'both') {
-        suggestions.push(`"${el.title}" n'est lié à aucun KPI - ajouter résultat ET performance`);
+        push('balance.missingBoth', { title: el.title }, `"${el.title}" is linked to no KPI — add both result and performance`);
       } else if (el.missing === 'result') {
-        suggestions.push(`"${el.title}" manque un indicateur de résultat (lagging)`);
+        push('balance.missingResult', { title: el.title }, `"${el.title}" is missing a result (lagging) indicator`);
       } else if (el.missing === 'performance') {
-        suggestions.push(`"${el.title}" manque un indicateur de performance (leading)`);
+        push('balance.missingPerformance', { title: el.title }, `"${el.title}" is missing a performance (leading) indicator`);
       }
     }
   }
@@ -499,35 +541,35 @@ function generateAIContext(matrixName, score, level, elements, orphans, chains, 
   };
 
   const parts = [
-    `Matrice "${matrixName}" - Score ${score}/100 (${level.label}).`,
-    `Éléments: ${counts.north} visions, ${counts.east} objectifs, ${counts.south} initiatives, ${counts.west} KPIs.`
+    `Matrix "${matrixName}" — score ${score}/100 (${level.label}).`,
+    `Elements: ${counts.north} vision(s), ${counts.east} annual objective(s), ${counts.south} initiative(s), ${counts.west} KPI(s).`
   ];
 
   if (indicatorBalance && indicatorBalance.kpiStats.total > 0) {
     const { result, performance, unclassified } = indicatorBalance.kpiStats;
-    parts.push(`KPIs: ${result} résultat (lagging), ${performance} performance (leading)${unclassified > 0 ? `, ${unclassified} non classés` : ''}.`);
+    parts.push(`KPIs: ${result} result (lagging), ${performance} performance (leading)${unclassified > 0 ? `, ${unclassified} unclassified` : ''}.`);
 
     const balanceRate = indicatorBalance.score;
     if (balanceRate < 50) {
-      parts.push(`Équilibre indicateurs faible (${balanceRate}%): objectifs/initiatives manquent de KPIs des deux types.`);
+      parts.push(`Weak indicator balance (${balanceRate}%): objectives and initiatives lack KPIs of both types.`);
     } else if (balanceRate < 80) {
-      parts.push(`Équilibre indicateurs moyen (${balanceRate}%): certains éléments n'ont qu'un type de KPI.`);
+      parts.push(`Partial indicator balance (${balanceRate}%): some elements only have one KPI type.`);
     }
   }
 
   if (orphans.count > 0) {
-    parts.push(`${orphans.count} élément(s) orphelin(s) sans corrélation.`);
+    parts.push(`${orphans.count} orphan element(s) with no correlation.`);
   }
   if (chains.incomplete > 0) {
-    parts.push(`${chains.incomplete}/${chains.total} vision(s) sans chaîne complète vers les KPIs.`);
+    parts.push(`${chains.incomplete}/${chains.total} vision(s) with no complete chain down to a KPI.`);
   }
 
   if (score >= 71) {
-    parts.push(`Matrice bien structurée, prête pour revue stratégique.`);
+    parts.push('Well structured, ready for a strategic review.');
   } else if (score >= 51) {
-    parts.push(`Structure acceptable, quelques améliorations possibles.`);
+    parts.push('Acceptable structure, some improvements possible.');
   } else {
-    parts.push(`Matrice à compléter: ajouter éléments et corrélations.`);
+    parts.push('Incomplete: add elements and correlations.');
   }
 
   return parts.join(' ');
