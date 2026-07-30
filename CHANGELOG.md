@@ -2,6 +2,38 @@
 
 ## 3.0.0
 
+### Added — an agent can now build a strategy, not only read one
+
+- **`create_matrix`**, **`upsert_element`** and **`set_correlation`**. Until now
+  the server could read a matrix, score it, diagnose a theme and move a status
+  forward, but the structure itself had to be typed into a web UI. An agent can
+  now start from nothing: create the matrix, add each objective, KPI and
+  initiative, wire the adjacent quadrants, then ask
+  `get_matrix_completeness` what is still missing.
+
+  `upsert_element` creates when given a `quadrant` and a `title`, and updates
+  when given an `element_id`. `set_correlation` with `strength: "none"` removes a
+  link. Both accept an optional `matrix_id` and otherwise target the default
+  matrix.
+
+### Fixed
+
+- **Local JSON mode hung on every element write.** `updateElement` held the
+  per-matrix lock and then called `saveMatrix`, which waited for that same lock:
+  a non-reentrant mutex waiting on its own caller. `update_element_status` — the
+  only write path sovereign mode had — never returned. The mutex is now
+  reentrant, and local writes are covered by tests that run under a timeout, so a
+  hang fails instead of stalling.
+- **Tool schemas advertised values the API rejects.** `add_idea` failed on its
+  own default: it offered
+  `conversation | team_meeting | customer_feedback | market_analysis | internal_audit | other`
+  where the API accepted
+  `team_meeting | client_feedback | market_watch | internal | other` — two values
+  in common out of six. `conversation` is now a first-class source (for an
+  agent-first product it is the most informative provenance there is) and the
+  enums are aligned. `on_hold`, offered by `list_objectives` and
+  `update_element_status`, never existed on the API side and is gone.
+
 ### Breaking
 
 - **`get_matrix_completeness` returns structured suggestions.** `suggestions`

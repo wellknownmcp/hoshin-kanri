@@ -27,7 +27,7 @@
       "categories": ["strategy", "planning", "lean", "okr", "management"],
       "documentation": "https://hoshin.app",
       "highlights": [
-        "11 tools + 9 guided prompts: X-Matrix read/write, idea inbox, deployment diagnosis, weekly execution sync (Linear/Jira via external_ref)",
+        "14 tools + 9 guided prompts: X-Matrix read/write, idea inbox, deployment diagnosis, weekly execution sync (Linear/Jira via external_ref)",
         "matrix_artifact prompt renders a boardroom-ready interactive X-Matrix artifact",
         "share_matrix publishes a revocable read-only public link",
         "OAuth 2.1 with PKCE and dynamic client registration - connects to claude.ai and Cursor in minutes",

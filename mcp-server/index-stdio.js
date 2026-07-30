@@ -272,6 +272,119 @@ async function handleGetMatrixData(args) {
   };
 }
 
+async function handleCreateMatrix(args) {
+  const { name, description, period_type, period_start, period_end, is_default } = args;
+
+  if (!name || name.trim().length === 0) {
+    return { error: 'name is required' };
+  }
+
+  const created = await callAPI('/api/matrices', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: name.trim(),
+      description: description ?? undefined,
+      periodType: period_type ?? 'annual',
+      periodStart: period_start ?? undefined,
+      periodEnd: period_end ?? undefined,
+      isDefault: is_default === true
+    })
+  });
+
+  const matrix = created.matrix ?? created;
+  return {
+    success: true,
+    message: `Matrix "${matrix.name}" created. Add elements with upsert_element, then wire them with set_correlation.`,
+    matrix: { id: matrix.id, name: matrix.name, periodType: matrix.periodType }
+  };
+}
+
+/** Resolve the matrix to write into: the one given, or the organization default. */
+async function resolveMatrixId(matrixId) {
+  if (matrixId) return matrixId;
+  const result = await callAPI('/api/matrices?isActive=true&limit=1');
+  return result.matrices && result.matrices.length > 0 ? result.matrices[0].id : null;
+}
+
+async function handleUpsertElement(args) {
+  const {
+    matrix_id,
+    element_id,
+    quadrant,
+    title,
+    description,
+    status,
+    target_value,
+    current_value,
+    unit,
+    indicator_type,
+    external_ref
+  } = args;
+
+  const matrixId = await resolveMatrixId(matrix_id);
+  if (!matrixId) return { error: 'No matrix found. Create one first with create_matrix.' };
+
+  if (!element_id && (!quadrant || !title)) {
+    return { error: 'quadrant and title are required to create an element (or pass element_id to update one)' };
+  }
+
+  const body = {};
+  if (quadrant !== undefined) body.quadrant = quadrant;
+  if (title !== undefined) body.title = title;
+  if (description !== undefined) body.description = description;
+  if (status !== undefined) body.status = status;
+  if (target_value !== undefined) body.targetValue = target_value;
+  if (current_value !== undefined) body.currentValue = current_value;
+  if (unit !== undefined) body.unit = unit;
+  if (indicator_type !== undefined) body.indicatorType = indicator_type;
+  if (external_ref !== undefined) body.externalRef = external_ref || null;
+
+  const created = !element_id;
+  const result = await callAPI(
+    created ? `/api/matrices/${matrixId}/elements` : `/api/matrices/${matrixId}/elements/${element_id}`,
+    { method: created ? 'POST' : 'PUT', body: JSON.stringify(body) }
+  );
+
+  const element = result.element ?? result;
+  return {
+    success: true,
+    created,
+    message: created ? `Element "${element.title}" created` : `Element "${element.title}" updated`,
+    element
+  };
+}
+
+async function handleSetCorrelation(args) {
+  const { matrix_id, from_element_id, to_element_id, strength } = args;
+
+  if (!from_element_id || !to_element_id) {
+    return { error: 'from_element_id and to_element_id are required' };
+  }
+  if (!strength) {
+    return { error: 'strength is required (none | weak | medium | strong)' };
+  }
+
+  const matrixId = await resolveMatrixId(matrix_id);
+  if (!matrixId) return { error: 'No matrix found. Create one first with create_matrix.' };
+
+  const result = await callAPI(`/api/matrices/${matrixId}/correlations`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      fromElementId: from_element_id,
+      toElementId: to_element_id,
+      strength
+    })
+  });
+
+  const removed = result.removed === true;
+  return {
+    success: true,
+    removed,
+    message: removed ? 'Correlation removed' : `Correlation set to ${strength}`,
+    correlation: result.correlation ?? null
+  };
+}
+
 async function handleUpdateElementStatus(args) {
   const { element_id, status, progress, notes, external_ref } = args;
 
@@ -608,6 +721,15 @@ async function main() {
           break;
         case 'share_matrix':
           result = await handleShareMatrix(args || {});
+          break;
+        case 'create_matrix':
+          result = await handleCreateMatrix(args || {});
+          break;
+        case 'upsert_element':
+          result = await handleUpsertElement(args || {});
+          break;
+        case 'set_correlation':
+          result = await handleSetCorrelation(args || {});
           break;
         case 'update_element_status':
           result = await handleUpdateElementStatus(args || {});

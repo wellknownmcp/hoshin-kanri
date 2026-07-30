@@ -33,9 +33,12 @@ export const tools = [
           enum: ['low', 'medium', 'high', 'critical'],
           description: 'Priority level (default: medium)'
         },
+        // Must stay identical to IDEA_SOURCES in src/lib/enums.ts — the API
+        // validates against that enum, so any value advertised here and absent
+        // there is a promise the agent cannot keep. A test asserts the match.
         source: {
           type: 'string',
-          enum: ['conversation', 'team_meeting', 'customer_feedback', 'market_analysis', 'internal_audit', 'other'],
+          enum: ['conversation', 'team_meeting', 'client_feedback', 'market_watch', 'internal', 'other'],
           description: 'Where this idea originated (default: conversation)'
         },
         tags: {
@@ -60,7 +63,7 @@ export const tools = [
         },
         status: {
           type: 'string',
-          enum: ['active', 'completed', 'on_hold', 'all'],
+          enum: ['draft', 'active', 'completed', 'cancelled', 'all'],
           description: 'Filter by status (default: all)'
         }
       }
@@ -91,7 +94,11 @@ export const tools = [
         },
         status: {
           type: 'string',
-          enum: ['active', 'completed', 'on_hold', 'cancelled'],
+          // No `on_hold`: the element statuses are draft | active | completed |
+          // cancelled, and advertising a fifth one only produced a validation
+          // error the agent could not diagnose. Adding a real "paused" status is
+          // a product decision, not a schema fix.
+          enum: ['draft', 'active', 'completed', 'cancelled'],
           description: 'New status'
         },
         progress: {
@@ -258,6 +265,128 @@ Not available in local JSON mode (sovereign mode has no cloud page by design —
         }
       },
       required: ['topic']
+    }
+  },
+  {
+    name: 'create_matrix',
+    description:
+      'Create a new X-Matrix. Use this to start a strategy from scratch: create the matrix, then add elements with upsert_element and wire them with set_correlation. The first matrix of an organization becomes the default one.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Name of the matrix, e.g. "Strategy 2027" (required)'
+        },
+        description: {
+          type: 'string',
+          description: 'What this deployment covers'
+        },
+        period_type: {
+          type: 'string',
+          enum: ['annual', 'multi_year', 'quarterly'],
+          description: 'Planning horizon (default: annual)'
+        },
+        period_start: {
+          type: 'string',
+          description: 'Start of the period, ISO date (YYYY-MM-DD)'
+        },
+        period_end: {
+          type: 'string',
+          description: 'End of the period, ISO date (YYYY-MM-DD)'
+        },
+        is_default: {
+          type: 'boolean',
+          description: 'Make this the default matrix of the organization'
+        }
+      },
+      required: ['name']
+    }
+  },
+  {
+    name: 'upsert_element',
+    description:
+      'Create an X-Matrix element, or update one when element_id is given. Quadrants: north = 3-5 year vision, east = annual objectives, south = initiatives, west = KPIs. A west element should carry indicator_type so the completeness score can judge the leading/lagging balance.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        matrix_id: {
+          type: 'string',
+          description: 'UUID of the matrix (default: the organization default matrix)'
+        },
+        element_id: {
+          type: 'string',
+          description: 'UUID of an existing element to update. Omit to create a new one.'
+        },
+        quadrant: {
+          type: 'string',
+          enum: ['north', 'east', 'south', 'west'],
+          description: 'Quadrant of the element (required when creating)'
+        },
+        title: {
+          type: 'string',
+          description: 'Title of the element (required when creating)'
+        },
+        description: {
+          type: 'string',
+          description: 'Longer description, rationale, scope'
+        },
+        status: {
+          type: 'string',
+          enum: ['draft', 'active', 'completed', 'cancelled'],
+          description: 'Status of the element (default: active)'
+        },
+        target_value: {
+          type: 'string',
+          description: 'Target to reach, e.g. "38"'
+        },
+        current_value: {
+          type: 'string',
+          description: 'Where it stands today, e.g. "31"'
+        },
+        unit: {
+          type: 'string',
+          description: 'Unit of the values, e.g. "%", "k€", "days"'
+        },
+        indicator_type: {
+          type: 'string',
+          enum: ['result', 'performance'],
+          description:
+            'For west elements only: result = lagging (measures outcomes), performance = leading (measures the process producing them). Every objective should be tracked by at least one of each.'
+        },
+        external_ref: {
+          type: 'string',
+          description: 'URL or key of the project implementing this in your execution tool (Linear, Jira, GitHub)'
+        }
+      }
+    }
+  },
+  {
+    name: 'set_correlation',
+    description:
+      'Wire two elements of adjacent quadrants together, or unwire them with strength "none". Only adjacent pairs carry meaning: north↔east, east↔south, south↔west, north↔west. That constraint is what makes the matrix a deployment tool — a vision reaches a KPI through an objective and an initiative, never directly.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        matrix_id: {
+          type: 'string',
+          description: 'UUID of the matrix (default: the organization default matrix)'
+        },
+        from_element_id: {
+          type: 'string',
+          description: 'UUID of the first element (required)'
+        },
+        to_element_id: {
+          type: 'string',
+          description: 'UUID of the second element (required)'
+        },
+        strength: {
+          type: 'string',
+          enum: ['none', 'weak', 'medium', 'strong'],
+          description: 'How strongly they are linked. "none" removes the correlation.'
+        }
+      },
+      required: ['from_element_id', 'to_element_id', 'strength']
     }
   }
 ];

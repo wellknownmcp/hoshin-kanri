@@ -8,19 +8,33 @@
 import { readFile, writeFile, rename, mkdir, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { computeCompleteness } from './completeness.js';
 
-// Simple in-process mutex to avoid concurrent writes to the same file
+// In-process mutex serialising writes to the same file.
+//
+// Re-entrant on purpose: a locked section legitimately calls another helper that
+// locks the same key (read-modify-write around saveMatrix). With a plain
+// non-reentrant mutex the inner call waits for a lock its own caller holds and
+// hangs forever — which is exactly what update_element_status did in local mode.
+// AsyncLocalStorage carries the set of keys held by the current async context,
+// so a nested acquisition of a key we already hold runs straight through.
 const locks = new Map();
+const heldKeys = new AsyncLocalStorage();
 
 async function withLock(key, fn) {
+  const held = heldKeys.getStore();
+  if (held?.has(key)) return await fn();
+
   while (locks.get(key)) {
     await new Promise(r => setTimeout(r, 10));
   }
   locks.set(key, true);
+  const next = new Set(held ?? []);
+  next.add(key);
   try {
-    return await fn();
+    return await heldKeys.run(next, fn);
   } finally {
     locks.delete(key);
   }
@@ -186,6 +200,128 @@ export function createJsonStore(config) {
     return null;
   }
 
+  /** Create a matrix file and make it the default if it is the first one. */
+  async function createMatrix(data) {
+    const now = new Date().toISOString();
+    const matrix = {
+      id: randomUUID(),
+      name: data.name,
+      description: data.description ?? null,
+      periodType: data.periodType ?? 'annual',
+      periodStart: data.periodStart ?? null,
+      periodEnd: data.periodEnd ?? null,
+      status: 'active',
+      elements: { north: [], east: [], south: [], west: [] },
+      correlations: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await saveMatrix(matrix);
+
+    const cfg = (await readJSON(configPath)) ?? {};
+    const existing = await listMatrices();
+    if (data.isDefault || existing.length === 1 || !cfg.defaultMatrixId) {
+      cfg.defaultMatrixId = matrix.id;
+      await writeJSON(configPath, cfg);
+    }
+
+    return matrix;
+  }
+
+  /** Create an element, or patch it when elementId is given. */
+  async function upsertElement(matrixId, elementId, data) {
+    return withLock(`matrix:${matrixId}`, async () => {
+      const matrix = await getMatrix(matrixId);
+      if (!matrix) throw new Error(`Matrix ${matrixId} not found`);
+      matrix.elements ??= { north: [], east: [], south: [], west: [] };
+
+      if (elementId) {
+        const updated = await updateElement(matrixId, elementId, data);
+        return { element: updated, created: false };
+      }
+
+      if (!data.quadrant) throw new Error('quadrant is required to create an element');
+      if (!data.title) throw new Error('title is required to create an element');
+
+      const bucket = (matrix.elements[data.quadrant] ??= []);
+      const now = new Date().toISOString();
+      const element = {
+        id: randomUUID(),
+        quadrant: data.quadrant,
+        position: data.position ?? bucket.length,
+        title: data.title,
+        description: data.description ?? null,
+        status: data.status ?? 'active',
+        targetValue: data.targetValue ?? null,
+        currentValue: data.currentValue ?? null,
+        unit: data.unit ?? null,
+        indicatorType: data.indicatorType ?? null,
+        externalRef: data.externalRef ?? null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      bucket.push(element);
+      matrix.updatedAt = now;
+      await saveMatrix(matrix);
+      return { element, created: true };
+    });
+  }
+
+  /**
+   * Set (or remove, with strength 'none') the correlation between two elements.
+   * Stored with the same snake_case keys the score engine reads, and canonicalised
+   * so a pair cannot end up recorded twice in opposite directions.
+   */
+  async function setCorrelation(matrixId, fromElementId, toElementId, strength) {
+    return withLock(`matrix:${matrixId}`, async () => {
+      const matrix = await getMatrix(matrixId);
+      if (!matrix) throw new Error(`Matrix ${matrixId} not found`);
+      matrix.correlations ??= [];
+
+      const locate = (id) => {
+        for (const quadrant of ['north', 'east', 'south', 'west']) {
+          const found = (matrix.elements?.[quadrant] ?? []).find((e) => e.id === id);
+          if (found) return { element: found, quadrant };
+        }
+        return null;
+      };
+
+      const a = locate(fromElementId);
+      const b = locate(toElementId);
+      if (!a) throw new Error(`Element ${fromElementId} not found in matrix ${matrixId}`);
+      if (!b) throw new Error(`Element ${toElementId} not found in matrix ${matrixId}`);
+      if (fromElementId === toElementId) throw new Error('A correlation needs two different elements');
+
+      const samePair = (c) => {
+        const ids = [c.from_element_id ?? c.fromElementId, c.to_element_id ?? c.toElementId];
+        return ids.includes(fromElementId) && ids.includes(toElementId);
+      };
+
+      matrix.correlations = matrix.correlations.filter((c) => !samePair(c));
+
+      let correlation = null;
+      if (strength && strength !== 'none') {
+        const [first, second] =
+          fromElementId < toElementId ? [a, b] : [b, a];
+        const [firstId, secondId] =
+          fromElementId < toElementId ? [fromElementId, toElementId] : [toElementId, fromElementId];
+        correlation = {
+          from_element_id: firstId,
+          to_element_id: secondId,
+          from_quadrant: first.quadrant,
+          to_quadrant: second.quadrant,
+          strength,
+        };
+        matrix.correlations.push(correlation);
+      }
+
+      matrix.updatedAt = new Date().toISOString();
+      await saveMatrix(matrix);
+      return { correlation, removed: !correlation };
+    });
+  }
+
   async function saveMatrix(matrix) {
     const filePath = path.join(matricesDir, `${matrix.id}.json`);
     return withLock(`matrix:${matrix.id}`, async () => {
@@ -349,6 +485,9 @@ export function createJsonStore(config) {
     getMatrix,
     getDefaultMatrix,
     saveMatrix,
+    createMatrix,
+    upsertElement,
+    setCorrelation,
     updateElement,
     findElementMatrix,
 

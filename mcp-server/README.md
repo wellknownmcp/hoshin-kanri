@@ -7,7 +7,7 @@ completeness score, and the prompts that let your AI agent run the
 discipline: weekly execution sync, boardroom artifacts, deployment
 diagnosis.
 
-**11 tools · 9 guided prompts · 2 modes: sovereign local or remote API.**
+**14 tools · 9 guided prompts · 2 modes: sovereign local or remote API.**
 
 ## Quick start — sovereign local mode (nothing leaves your machine)
 
@@ -53,14 +53,22 @@ no token to paste.
 
 ## Tools
 
-`get_matrix_data` (full matrix for views and artifacts) ·
+**Write:** `create_matrix` · `upsert_element` · `set_correlation` ·
+`update_element_status` (accepts `external_ref` — link to the Linear/Jira
+project) · `add_idea`
+
+**Read and judge:** `get_matrix_data` (full matrix for views and artifacts) ·
 `get_matrix_summary` · `get_matrix_completeness` (5-metric score) ·
-`list_objectives` · `update_element_status` (accepts `external_ref` — link
-to the Linear/Jira project) · `add_idea` · `search_ideas` ·
-`get_management_architecture` · `diagnose_theme_deployment` ·
-`suggest_meeting_for_topic` · `share_matrix` (publish a revocable read-only
-public link — remote mode only, by design: in local mode your data has no
-cloud to leak to).
+`list_objectives` · `search_ideas` · `get_management_architecture` ·
+`diagnose_theme_deployment` · `suggest_meeting_for_topic`
+
+**Publish:** `share_matrix` (a revocable read-only public link — remote mode
+only, by design: in local mode your data has no cloud to leak to).
+
+The three write tools mean an agent can build a strategy from nothing:
+`create_matrix`, then `upsert_element` per objective, KPI and initiative, then
+`set_correlation` to wire adjacent quadrants — and `get_matrix_completeness` to
+tell it what is still missing.
 
 ## Prompts
 
