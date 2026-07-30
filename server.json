@@ -8,7 +8,7 @@
     "url": "https://github.com/wellknownmcp/hoshin-kanri",
     "source": "github"
   },
-  "version": "2.0.1",
+  "version": "3.0.0",
   "remotes": [
     { "type": "streamable-http", "url": "https://hoshin.app/mcp" }
   ],
@@ -17,7 +17,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "hoshin-kanri-mcp",
-      "version": "2.0.1",
+      "version": "3.0.0",
       "transport": { "type": "stdio" }
     }
   ],
