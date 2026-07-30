@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.wellknownmcp/hoshin-kanri",
   "title": "Hoshin Kanri X-Matrix",
-  "description": "Hoshin Kanri X-Matrix for AI agents: strategy, meeting cadences, completeness score, OAuth 2.1.",
+  "description": "Strategic memory agents can build, score and keep current: a living X-Matrix with review cadences.",
   "websiteUrl": "https://hoshin.app",
   "repository": {
     "url": "https://github.com/wellknownmcp/hoshin-kanri",
@@ -27,7 +27,9 @@
       "categories": ["strategy", "planning", "lean", "okr", "management"],
       "documentation": "https://hoshin.app",
       "highlights": [
-        "14 tools + 9 guided prompts: X-Matrix read/write, idea inbox, deployment diagnosis, weekly execution sync (Linear/Jira via external_ref)",
+        "create_matrix, upsert_element and set_correlation: an agent builds a strategy from nothing, then keeps it current — no web form in the loop",
+        "14 tools + 9 guided prompts: idea inbox, theme deployment diagnosis, weekly execution sync (Linear/Jira via external_ref)",
+        "A completeness score that returns a verdict, not a dashboard: coverage, correlation density, orphan elements, vision-to-KPI chains, leading/lagging balance",
         "matrix_artifact prompt renders a boardroom-ready interactive X-Matrix artifact",
         "share_matrix publishes a revocable read-only public link",
         "OAuth 2.1 with PKCE and dynamic client registration - connects to claude.ai and Cursor in minutes",
