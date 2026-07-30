@@ -1,0 +1,53 @@
+{
+  "name": "hoshin-kanri-mcp",
+  "version": "2.0.1",
+  "description": "Hoshin Kanri X-Matrix MCP server — sovereign local JSON mode (data never leaves your machine) or remote API mode. 11 tools, 9 guided prompts: strategy deployment, review cadences, completeness score, weekly execution sync.",
+  "type": "module",
+  "mcpName": "io.github.wellknownmcp/hoshin-kanri",
+  "license": "MIT",
+  "homepage": "https://hoshin.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wellknownmcp/hoshin-kanri.git",
+    "directory": "mcp-server"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "hoshin-kanri",
+    "x-matrix",
+    "strategy-deployment",
+    "strategic-planning",
+    "lean",
+    "okr",
+    "claude"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "hoshin-kanri-mcp": "./index-local.js",
+    "hoshin-kanri-mcp-remote": "./index-stdio.js"
+  },
+  "files": [
+    "index-local.js",
+    "index-stdio.js",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "index-local.js",
+  "scripts": {
+    "start": "node index-streamable-http.js",
+    "start:stdio": "node index-stdio.js",
+    "start:local": "node index-local.js",
+    "dev": "node --watch index-streamable-http.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1"
+  }
+}

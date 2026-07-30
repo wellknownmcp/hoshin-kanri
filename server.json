@@ -1,0 +1,38 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.wellknownmcp/hoshin-kanri",
+  "title": "Hoshin Kanri X-Matrix",
+  "description": "Hoshin Kanri X-Matrix for AI agents: strategy, meeting cadences, completeness score, OAuth 2.1.",
+  "websiteUrl": "https://hoshin.app",
+  "repository": {
+    "url": "https://github.com/wellknownmcp/hoshin-kanri",
+    "source": "github"
+  },
+  "version": "2.0.1",
+  "remotes": [
+    { "type": "streamable-http", "url": "https://hoshin.app/mcp" }
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "hoshin-kanri-mcp",
+      "version": "2.0.1",
+      "transport": { "type": "stdio" }
+    }
+  ],
+  "_meta": {
+    "io.modelcontextprotocol.registry/publisher-provided": {
+      "vendor": "Animam Technologies",
+      "categories": ["strategy", "planning", "lean", "okr", "management"],
+      "documentation": "https://hoshin.app",
+      "highlights": [
+        "11 tools + 9 guided prompts: X-Matrix read/write, idea inbox, deployment diagnosis, weekly execution sync (Linear/Jira via external_ref)",
+        "matrix_artifact prompt renders a boardroom-ready interactive X-Matrix artifact",
+        "share_matrix publishes a revocable read-only public link",
+        "OAuth 2.1 with PKCE and dynamic client registration - connects to claude.ai and Cursor in minutes",
+        "Sovereign local JSON mode available (data never leaves your machine)"
+      ]
+    }
+  }
+}
