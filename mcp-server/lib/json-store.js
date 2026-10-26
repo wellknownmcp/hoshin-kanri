@@ -174,8 +174,17 @@ export function createJsonStore(config) {
     return matrices;
   }
 
+  // A matrix id names a file under matricesDir: a model-supplied '../x' would
+  // otherwise read (or, through saveMatrix, write) any *.json the user can reach.
+  const isSafeMatrixId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id);
+  function matrixPath(matrixId) {
+    if (!isSafeMatrixId(matrixId)) throw new Error(`Invalid matrix id: ${String(matrixId).slice(0, 40)}`);
+    return path.join(matricesDir, `${matrixId}.json`);
+  }
+
   async function getMatrix(matrixId) {
-    const filePath = path.join(matricesDir, `${matrixId}.json`);
+    if (!isSafeMatrixId(matrixId)) return null; // same answer as an unknown id
+    const filePath = matrixPath(matrixId);
     return await readJSON(filePath);
   }
 
@@ -323,7 +332,7 @@ export function createJsonStore(config) {
   }
 
   async function saveMatrix(matrix) {
-    const filePath = path.join(matricesDir, `${matrix.id}.json`);
+    const filePath = matrixPath(matrix.id);
     return withLock(`matrix:${matrix.id}`, async () => {
       await writeJSON(filePath, matrix);
     });

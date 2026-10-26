@@ -31,6 +31,7 @@ import {
 import { tools, getQuadrantLabel } from './lib/tool-definitions.js';
 import { promptsList, getPromptMessages } from './lib/prompt-definitions.js';
 import { VERSION } from './lib/version.js';
+import { assertSafeEndpoint } from './lib/safe-endpoint.js';
 
 // Configuration
 const API_BASE = process.env.API_BASE_URL || 'https://hoshin.app';
@@ -43,6 +44,7 @@ const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
 // ============================================
 
 async function callAPI(endpoint, options = {}) {
+  assertSafeEndpoint(endpoint);
   const url = `${API_BASE}${endpoint}`;
   const headers = {
     'Content-Type': 'application/json',

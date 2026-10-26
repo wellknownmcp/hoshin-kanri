@@ -14,7 +14,8 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ListPromptsRequestSchema,
-  GetPromptRequestSchema
+  GetPromptRequestSchema,
+  isInitializeRequest
 } from '@modelcontextprotocol/sdk/types.js';
 
 import express from 'express';
@@ -23,6 +24,7 @@ import { randomUUID } from 'crypto';
 import { promptsList, getPromptMessages } from './lib/prompt-definitions.js';
 import { tools, getQuadrantLabel } from './lib/tool-definitions.js';
 import { VERSION } from './lib/version.js';
+import { assertSafeEndpoint } from './lib/safe-endpoint.js';
 
 // Load environment variables
 dotenv.config({ path: '../.env' });
@@ -34,8 +36,8 @@ const API_BASE = process.env.API_BASE_URL || 'http://localhost:3007';
 const PUBLIC_URL = process.env.OAUTH_ISSUER || API_BASE;
 const WWW_AUTHENTICATE = `Bearer resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource"`;
 
-// Session management: sessionId → { transport, server, authToken, organizationId,
-// organizationName, lastSeen }
+// Session management: sessionId → { transport, server, authContext, principal,
+// organizationId, organizationName, lastSeen, activeStreams }
 const transports = new Map();
 
 // Clients are supposed to close their session with DELETE /mcp, and often do
@@ -44,6 +46,24 @@ const transports = new Map();
 // its bearer token alive for the lifetime of the process.
 const SESSION_IDLE_MS = Number(process.env.MCP_SESSION_IDLE_MS || 30 * 60 * 1000);
 const SESSION_SWEEP_MS = Number(process.env.MCP_SESSION_SWEEP_MS || 5 * 60 * 1000);
+// Sessions live in this process's memory: one principal (the public demo token
+// included) must not be able to grow the map until PM2 restarts the process and
+// drops every tenant's sessions. Past its cap a principal recycles its oldest one.
+// The public demo token is one principal shared by every visitor: the cap must
+// leave room for them. Eviction is least-recently-used, and a client that gets
+// 404 on its session re-initializes (MCP spec).
+const MAX_SESSIONS_PER_PRINCIPAL = Number(process.env.MCP_MAX_SESSIONS_PER_PRINCIPAL || 50);
+const MAX_SESSIONS_TOTAL = Number(process.env.MCP_MAX_SESSIONS_TOTAL || 2000);
+
+/**
+ * Stable identity of the caller behind a validated credential. An OAuth access
+ * token changes on every refresh, so it is keyed on user + client; an hk_ token
+ * is keyed on its row id. A session only ever serves the principal that created it.
+ */
+function principalOf(authInfo) {
+  if (authInfo.kind === 'oauth2') return `oauth:${authInfo.userId}:${authInfo.clientId}`;
+  return `token:${authInfo.tokenId}`;
+}
 
 async function closeSession(sessionId, session, reason) {
   transports.delete(sessionId);
@@ -97,7 +117,9 @@ app.use(express.json());
  * no secret and no key material, and the same token is forwarded downstream to
  * `/api/*` afterwards.
  */
-async function validateToken(token) {
+// `opensSession` lets the API count MCP sessions (its audit row) rather than
+// requests: every request is validated, only an initialize opens a session.
+async function validateToken(token, opensSession = false) {
   if (!token) return null;
 
   try {
@@ -105,7 +127,7 @@ async function validateToken(token) {
     const response = await fetch(`${API_BASE}/api/auth/validate-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token })
+      body: JSON.stringify(opensSession ? { token, session: 'open' } : { token })
     });
 
     if (!response.ok) return null;
@@ -151,6 +173,7 @@ app.use((req, res, next) => {
 // ============================================
 
 async function callAPI(endpoint, options = {}) {
+  assertSafeEndpoint(endpoint);
   const url = `${API_BASE}${endpoint}`;
   try {
     const response = await fetch(url, {
@@ -1036,7 +1059,7 @@ async function handleSuggestMeetingForTopic(args, authContext) {
 // MCP SERVER FACTORY
 // ============================================
 
-function createServer(authInfo) {
+function createServer(authContext) {
   const server = new Server(
     {
       name: 'hoshin-kanri-mcp',
@@ -1050,13 +1073,6 @@ function createServer(authInfo) {
       }
     }
   );
-
-  // Auth context for this server instance
-  const authContext = {
-    token: authInfo.token,
-    organizationId: authInfo.organizationId,
-    organizationName: authInfo.organizationName
-  };
 
   // List tools
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -1184,35 +1200,90 @@ app.get('/mcp/info', (req, res) => {
   });
 });
 
+// Validate the Bearer of any /mcp request; on failure the 401 is already sent.
+async function authenticate(req, res) {
+  const token = extractToken(req);
+  if (!token) {
+    // WWW-Authenticate lets OAuth-capable clients (claude.ai, Cursor)
+    // discover the authorization server instead of failing silently.
+    res.status(401).set('WWW-Authenticate', WWW_AUTHENTICATE).json({
+      error: 'UNAUTHORIZED',
+      message: 'Bearer token required. Use an API token (hk_*) or connect via OAuth.'
+    });
+    return null;
+  }
+
+  const opensSession = req.method === 'POST' && !req.headers['mcp-session-id'] && isInitializeRequest(req.body);
+  const authInfo = await validateToken(token, opensSession);
+  if (!authInfo) {
+    res.status(401).set('WWW-Authenticate', WWW_AUTHENTICATE).json({
+      error: 'INVALID_TOKEN',
+      message: 'Invalid or expired token.'
+    });
+    return null;
+  }
+  return authInfo;
+}
+
+// An Mcp-Session-Id is not a credential: the session it names is only served to
+// the principal that opened it (the session runs tools with that principal's token).
+function sessionFor(req, res, authInfo) {
+  const sessionId = req.headers['mcp-session-id'];
+  const session = sessionId ? transports.get(sessionId) : null;
+  if (!session) {
+    res.status(404).json({ error: 'SESSION_NOT_FOUND', message: 'Unknown session. Send an initialize request first.' });
+    return null;
+  }
+  if (session.principal !== principalOf(authInfo)) {
+    res.status(404).json({ error: 'SESSION_NOT_FOUND', message: 'Unknown session. Send an initialize request first.' });
+    return null;
+  }
+  return { sessionId, session };
+}
+
+async function makeRoomFor(principal) {
+  const own = [...transports].filter(([, s]) => s.principal === principal).sort((a, b) => a[1].lastSeen - b[1].lastSeen);
+  for (const [id, s] of own.slice(0, Math.max(0, own.length - MAX_SESSIONS_PER_PRINCIPAL + 1))) {
+    await closeSession(id, s, 'per-principal cap');
+  }
+  return transports.size < MAX_SESSIONS_TOTAL;
+}
+
 // Main MCP endpoint - POST for requests, GET for SSE stream
 app.post('/mcp', async (req, res) => {
   try {
-    // Extract and validate token
-    const token = extractToken(req);
-    if (!token) {
-      // WWW-Authenticate lets OAuth-capable clients (claude.ai, Cursor)
-      // discover the authorization server instead of failing silently.
-      return res.status(401).set('WWW-Authenticate', WWW_AUTHENTICATE).json({
-        error: 'UNAUTHORIZED',
-        message: 'Bearer token required. Use an API token (hk_*) or connect via OAuth.'
-      });
-    }
+    const authInfo = await authenticate(req, res);
+    if (!authInfo) return;
 
-    const authInfo = await validateToken(token);
-    if (!authInfo) {
-      return res.status(401).set('WWW-Authenticate', WWW_AUTHENTICATE).json({
-        error: 'INVALID_TOKEN',
-        message: 'Invalid or expired token.'
-      });
-    }
+    let sessionId;
+    let session;
 
-    // Get or create session
-    let sessionId = req.headers['mcp-session-id'];
-    let session = sessionId ? transports.get(sessionId) : null;
+    if (req.headers['mcp-session-id']) {
+      const found = sessionFor(req, res, authInfo);
+      if (!found) return;
+      ({ sessionId, session } = found);
+      session.lastSeen = Date.now();
+      // Same principal, possibly a refreshed OAuth access token: forward the
+      // current one, not the one the session was opened with.
+      session.authContext.token = authInfo.token;
+    } else {
+      // Only an initialize request opens a session: anything else would store a
+      // server + transport the SDK then rejects, and never reclaim it.
+      if (!isInitializeRequest(req.body)) {
+        return res.status(400).json({ error: 'BAD_REQUEST', message: 'Missing Mcp-Session-Id: send an initialize request first.' });
+      }
+      const principal = principalOf(authInfo);
+      if (!(await makeRoomFor(principal))) {
+        return res.status(503).json({ error: 'TOO_MANY_SESSIONS', message: 'Server at session capacity, retry later.' });
+      }
 
-    if (!session) {
       sessionId = randomUUID();
-      const server = createServer(authInfo);
+      const authContext = {
+        token: authInfo.token,
+        organizationId: authInfo.organizationId,
+        organizationName: authInfo.organizationName
+      };
+      const server = createServer(authContext);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => sessionId
       });
@@ -1220,7 +1291,8 @@ app.post('/mcp', async (req, res) => {
       session = {
         transport,
         server,
-        authToken: token,
+        authContext,
+        principal,
         organizationId: authInfo.organizationId,
         organizationName: authInfo.organizationName,
         lastSeen: Date.now(),
@@ -1233,9 +1305,7 @@ app.post('/mcp', async (req, res) => {
       // Connect server to transport
       await server.connect(transport);
 
-      console.log(`New MCP session: ${sessionId} (org: ${authInfo.organizationName}, ${transports.size} live)`);
-    } else {
-      session.lastSeen = Date.now();
+      console.log(`New MCP session: ${sessionId.slice(0, 8)}… (org: ${authInfo.organizationName}, ${transports.size} live)`);
     }
 
     // Set session ID header
@@ -1252,12 +1322,11 @@ app.post('/mcp', async (req, res) => {
 
 // SSE stream endpoint
 app.get('/mcp', async (req, res) => {
-  const sessionId = req.headers['mcp-session-id'];
-  const session = sessionId ? transports.get(sessionId) : null;
-
-  if (!session) {
-    return res.status(400).json({ error: 'No session. Send POST first.' });
-  }
+  const authInfo = await authenticate(req, res);
+  if (!authInfo) return;
+  const found = sessionFor(req, res, authInfo);
+  if (!found) return;
+  const { sessionId, session } = found;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -1277,13 +1346,13 @@ app.get('/mcp', async (req, res) => {
 
 // Session termination
 app.delete('/mcp', async (req, res) => {
-  const sessionId = req.headers['mcp-session-id'];
-  const session = sessionId ? transports.get(sessionId) : null;
+  const authInfo = await authenticate(req, res);
+  if (!authInfo) return;
+  const found = sessionFor(req, res, authInfo);
+  if (!found) return;
 
-  if (session) {
-    await closeSession(sessionId, session, 'client DELETE');
-    console.log(`Session terminated: ${sessionId} (${transports.size} live)`);
-  }
+  await closeSession(found.sessionId, found.session, 'client DELETE');
+  console.log(`Session terminated: ${found.sessionId.slice(0, 8)}… (${transports.size} live)`);
 
   res.status(204).end();
 });

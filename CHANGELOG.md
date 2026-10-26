@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Security
+
+- **An HTTP session is bound to the principal that opened it.** The
+  `Mcp-Session-Id` alone used to be enough to drive a session, and `GET` /
+  `DELETE /mcp` asked for no token. Every request now needs a Bearer whose
+  principal (API token, or OAuth user + client) matches the session; anything
+  else gets `404 SESSION_NOT_FOUND`. A session is only created by an
+  `initialize` request, with caps per principal (`MCP_MAX_SESSIONS_PER_PRINCIPAL`,
+  default 50, least recently used evicted) and in total
+  (`MCP_MAX_SESSIONS_TOTAL`, default 2000).
+- **Tool ids can no longer leave their resource.** Ids such as `matrix_id` or
+  `share_id` are interpolated into API paths, and `fetch` resolves `..` and cuts
+  at `?` or `#`: a crafted id could turn one tool into a call on another
+  endpoint with the user's token. `lib/safe-endpoint.js` now refuses any path
+  segment outside `[A-Za-z0-9_-]` and any query string a tool could not have
+  built, in both remote transports. Local JSON mode refuses unsafe matrix ids
+  the same way, so an id cannot point outside the data directory.
+
 ## 3.0.0
 
 ### Added — an agent can now build a strategy, not only read one
