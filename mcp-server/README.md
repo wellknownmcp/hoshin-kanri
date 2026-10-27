@@ -7,7 +7,7 @@ completeness score, and the prompts that let your AI agent run the
 discipline: weekly execution sync, boardroom artifacts, deployment
 diagnosis.
 
-**14 tools · 9 guided prompts · 2 modes: sovereign local or remote API.**
+**16 tools · 9 guided prompts · 2 modes: sovereign local or remote API.**
 
 ## Quick start — sovereign local mode (nothing leaves your machine)
 

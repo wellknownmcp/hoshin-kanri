@@ -1,6 +1,30 @@
 # Changelog
 
-## Unreleased
+## 3.1.0
+
+### Added — strategy deployed across levels
+
+- **`get_cascade`** and **`set_matrix_parent`**. Hoshin kanri is deployed
+  floor by floor: what the group decides this year (annual objectives,
+  initiatives) becomes what a business unit must achieve, then a site. A matrix
+  can now point to the matrix above it, and an element to the element of the
+  parent matrix it deploys. `get_cascade` returns the tree, and for each
+  parent → children edge: what was taken up and by whom, what nobody took up,
+  the children's objectives anchored to nothing above, and a coverage
+  percentage. Cancelled and completed elements are left out of the counts.
+- **`create_matrix`** takes `parent_matrix_id`; **`upsert_element`** takes
+  `parent_element_id` (an empty string removes the link). Links are refused on
+  the matrix itself, in a cycle, beyond four levels, or to an element outside
+  the direct parent matrix. Moving a matrix under another parent clears the
+  element links that no longer point into it.
+- Local JSON mode implements both tools, with the same rules. The analysis is
+  a pure module (`lib/cascade.js`) kept identical to the hosted one by a parity
+  test.
+
+### Fixed
+
+- Local JSON mode: changing an element's quadrant through `upsert_element` now
+  moves it to the new quadrant instead of leaving it filed under the old one.
 
 ### Security
 

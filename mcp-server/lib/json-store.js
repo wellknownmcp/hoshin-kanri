@@ -11,6 +11,38 @@ import path from 'node:path';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { computeCompleteness } from './completeness.js';
+import { analyzeCascade, ancestorsOf, parentLinkError } from './cascade.js';
+
+const PARENT_LINK_MESSAGES = {
+  SELF_PARENT: 'A matrix cannot be its own parent',
+  PARENT_NOT_FOUND: 'Parent matrix not found',
+  CASCADE_CYCLE: 'The parent matrix already sits below this one in the cascade',
+  CASCADE_TOO_DEEP: 'A cascade has at most 4 levels (group, BU, site, workshop)',
+};
+
+const QUADRANT_KEYS = ['north', 'east', 'south', 'west'];
+
+// Taken before any `matrix:<id>` lock by every write that checks or changes a
+// cascade link, so a check and its write never interleave with another one.
+const CASCADE_LOCK = 'cascade';
+
+/** A stored matrix as the cascade functions read it: one flat element list. */
+function cascadeView(matrix) {
+  return {
+    id: matrix.id,
+    name: matrix.name,
+    parentMatrixId: matrix.parentMatrixId ?? null,
+    elements: QUADRANT_KEYS.flatMap((q) =>
+      (matrix.elements?.[q] ?? []).map((e) => ({
+        id: e.id,
+        quadrant: q,
+        title: e.title,
+        status: e.status ?? 'active',
+        parentElementId: e.parentElementId ?? null,
+      })),
+    ),
+  };
+}
 
 // In-process mutex serialising writes to the same file.
 //
@@ -211,6 +243,16 @@ export function createJsonStore(config) {
 
   /** Create a matrix file and make it the default if it is the first one. */
   async function createMatrix(data) {
+    if (data.parentMatrixId) return withLock(CASCADE_LOCK, () => createMatrixUnlocked(data));
+    return createMatrixUnlocked(data);
+  }
+
+  async function createMatrixUnlocked(data) {
+    if (data.parentMatrixId) {
+      const nodes = (await listMatrices()).map(cascadeView);
+      const err = parentLinkError([...nodes, { id: '__new__', parentMatrixId: null }], '__new__', data.parentMatrixId);
+      if (err) throw new Error(PARENT_LINK_MESSAGES[err]);
+    }
     const now = new Date().toISOString();
     const matrix = {
       id: randomUUID(),
@@ -219,6 +261,7 @@ export function createJsonStore(config) {
       periodType: data.periodType ?? 'annual',
       periodStart: data.periodStart ?? null,
       periodEnd: data.periodEnd ?? null,
+      parentMatrixId: data.parentMatrixId ?? null,
       status: 'active',
       elements: { north: [], east: [], south: [], west: [] },
       correlations: [],
@@ -240,10 +283,18 @@ export function createJsonStore(config) {
 
   /** Create an element, or patch it when elementId is given. */
   async function upsertElement(matrixId, elementId, data) {
+    if (data.parentElementId) {
+      return withLock(CASCADE_LOCK, () => upsertElementUnlocked(matrixId, elementId, data));
+    }
+    return upsertElementUnlocked(matrixId, elementId, data);
+  }
+
+  async function upsertElementUnlocked(matrixId, elementId, data) {
     return withLock(`matrix:${matrixId}`, async () => {
       const matrix = await getMatrix(matrixId);
       if (!matrix) throw new Error(`Matrix ${matrixId} not found`);
       matrix.elements ??= { north: [], east: [], south: [], west: [] };
+      await assertParentElement(matrix, data.parentElementId);
 
       if (elementId) {
         const updated = await updateElement(matrixId, elementId, data);
@@ -267,6 +318,7 @@ export function createJsonStore(config) {
         unit: data.unit ?? null,
         indicatorType: data.indicatorType ?? null,
         externalRef: data.externalRef ?? null,
+        parentElementId: data.parentElementId ?? null,
         createdAt: now,
         updatedAt: now,
       };
@@ -349,6 +401,12 @@ export function createJsonStore(config) {
         const el = elements.find(e => e.id === elementId);
         if (el) {
           Object.assign(el, updates, { updatedAt: new Date().toISOString() });
+          // The bucket is the quadrant everything else reads (score, cascade):
+          // a changed quadrant field alone would leave the element where it was.
+          if (updates.quadrant && updates.quadrant !== quadrant && QUADRANT_KEYS.includes(updates.quadrant)) {
+            matrix.elements[quadrant] = elements.filter(e => e.id !== elementId);
+            (matrix.elements[updates.quadrant] ??= []).push(el);
+          }
           found = el;
           break;
         }
@@ -359,6 +417,57 @@ export function createJsonStore(config) {
       await saveMatrix(matrix);
       return found;
     });
+  }
+
+  /** The element an element deploys must sit in the parent matrix of its own matrix. */
+  async function assertParentElement(matrix, parentElementId) {
+    if (!parentElementId) return;
+    if (!matrix.parentMatrixId) {
+      throw new Error('This matrix has no parent matrix: set one before linking elements to it');
+    }
+    const parent = await getMatrix(matrix.parentMatrixId);
+    const found = parent && cascadeView(parent).elements.some((e) => e.id === parentElementId);
+    if (!found) throw new Error('Parent element not found in the parent matrix');
+  }
+
+  /** Attach a matrix under another, or detach it with a null parent. */
+  async function setMatrixParent(matrixId, parentMatrixId) {
+    return withLock(CASCADE_LOCK, () => setMatrixParentUnlocked(matrixId, parentMatrixId));
+  }
+
+  async function setMatrixParentUnlocked(matrixId, parentMatrixId) {
+    if (parentMatrixId) {
+      const nodes = (await listMatrices()).map(cascadeView);
+      if (!nodes.some((m) => m.id === matrixId)) throw new Error(`Matrix ${matrixId} not found`);
+      const err = parentLinkError(nodes, matrixId, parentMatrixId);
+      if (err) throw new Error(PARENT_LINK_MESSAGES[err]);
+    }
+    const parent = parentMatrixId ? await getMatrix(parentMatrixId) : null;
+    const parentIds = new Set(parent ? cascadeView(parent).elements.map((e) => e.id) : []);
+    return withLock(`matrix:${matrixId}`, async () => {
+      const matrix = await getMatrix(matrixId);
+      if (!matrix) throw new Error(`Matrix ${matrixId} not found`);
+      matrix.parentMatrixId = parentMatrixId ?? null;
+      // Links to the old parent's elements no longer mean anything.
+      for (const q of QUADRANT_KEYS) {
+        for (const e of matrix.elements?.[q] ?? []) {
+          if (e.parentElementId && !parentIds.has(e.parentElementId)) e.parentElementId = null;
+        }
+      }
+      matrix.updatedAt = new Date().toISOString();
+      await saveMatrix(matrix);
+      return matrix;
+    });
+  }
+
+  /** The cascade below a matrix, plus the matrices above it. */
+  async function getCascade(matrixId) {
+    const views = (await listMatrices()).map(cascadeView);
+    const analysis = analyzeCascade(views, matrixId);
+    if (!analysis) throw new Error(`Matrix ${matrixId} not found`);
+    const names = new Map(views.map((m) => [m.id, m.name]));
+    const ancestors = ancestorsOf(views, matrixId).map((id) => ({ id, name: names.get(id) ?? '' }));
+    return { ...analysis, ancestors };
   }
 
   async function findElementMatrix(elementId) {
@@ -499,6 +608,8 @@ export function createJsonStore(config) {
     setCorrelation,
     updateElement,
     findElementMatrix,
+    setMatrixParent,
+    getCascade,
 
     // Completeness
     getCompleteness,

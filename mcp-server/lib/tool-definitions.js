@@ -270,7 +270,7 @@ Not available in local JSON mode (sovereign mode has no cloud page by design —
   {
     name: 'create_matrix',
     description:
-      'Create a new X-Matrix. Use this to start a strategy from scratch: create the matrix, then add elements with upsert_element and wire them with set_correlation. The first matrix of an organization becomes the default one.',
+      'Create a new X-Matrix. Use this to start a strategy from scratch: create the matrix, then add elements with upsert_element and wire them with set_correlation. The first matrix of an organization becomes the default one. For a multi-level deployment (group → business unit → site), create the lower-level matrix with parent_matrix_id, then link each of its elements to what it deploys from above with upsert_element.parent_element_id.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -298,6 +298,10 @@ Not available in local JSON mode (sovereign mode has no cloud page by design —
         is_default: {
           type: 'boolean',
           description: 'Make this the default matrix of the organization'
+        },
+        parent_matrix_id: {
+          type: 'string',
+          description: 'UUID of the matrix of the level above (e.g. the group matrix for a business-unit matrix). At most 4 levels.'
         }
       },
       required: ['name']
@@ -357,8 +361,47 @@ Not available in local JSON mode (sovereign mode has no cloud page by design —
         external_ref: {
           type: 'string',
           description: 'URL or key of the project implementing this in your execution tool (Linear, Jira, GitHub)'
+        },
+        parent_element_id: {
+          type: 'string',
+          description:
+            'Cascade: UUID of the element of the PARENT matrix that this element deploys. Usual pattern: a parent annual objective (east) or initiative (south) becomes a north or east element of the level below. The matrix must have a parent matrix. Pass an empty string to remove the link.'
         }
       }
+    }
+  },
+  {
+    name: 'get_cascade',
+    description: `Read the multi-level deployment below a matrix (group → business units → sites): the sub-matrices level by level, and for each level what it decided (annual objectives and initiatives) that the level below took up, and what NOBODY took up. Also lists lower-level priorities that name nothing above (unanchored — legitimate local priorities or drift, to be discussed), and a coverage percentage.
+
+Use it to answer "is our group strategy actually deployed in the sites?", to prepare a catchball session, or before assessing how an event at group level propagates down.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        matrix_id: {
+          type: 'string',
+          description: 'UUID of the top matrix of the cascade to read (default: the organization default matrix)'
+        }
+      }
+    }
+  },
+  {
+    name: 'set_matrix_parent',
+    description:
+      'Attach an existing matrix under the matrix of the level above (business unit under group, site under business unit), or detach it with an empty parent_matrix_id. Links from its elements to the old parent are cleared. Refused if it would create a loop or a fifth level.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        matrix_id: {
+          type: 'string',
+          description: 'UUID of the matrix to attach (required)'
+        },
+        parent_matrix_id: {
+          type: 'string',
+          description: 'UUID of the matrix of the level above; empty string to detach (required)'
+        }
+      },
+      required: ['matrix_id', 'parent_matrix_id']
     }
   },
   {

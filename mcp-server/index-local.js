@@ -166,7 +166,8 @@ async function handleGetMatrixData(args) {
       name: matrix.name,
       year: matrix.year,
       status: matrix.status,
-      owner: matrix.owner
+      owner: matrix.owner,
+      parentMatrixId: matrix.parentMatrixId ?? null
     },
     quadrantLabels: {
       north: getQuadrantLabel('north'),
@@ -181,25 +182,31 @@ async function handleGetMatrixData(args) {
 }
 
 async function handleCreateMatrix(args) {
-  const { name, description, period_type, period_start, period_end, is_default } = args;
+  const { name, description, period_type, period_start, period_end, is_default, parent_matrix_id } = args;
 
   if (!name || name.trim().length === 0) {
     return { error: 'name is required' };
   }
 
-  const matrix = await store.createMatrix({
-    name: name.trim(),
-    description: description ?? null,
-    periodType: period_type ?? 'annual',
-    periodStart: period_start ?? null,
-    periodEnd: period_end ?? null,
-    isDefault: is_default === true,
-  });
+  let matrix;
+  try {
+    matrix = await store.createMatrix({
+      name: name.trim(),
+      description: description ?? null,
+      periodType: period_type ?? 'annual',
+      periodStart: period_start ?? null,
+      periodEnd: period_end ?? null,
+      isDefault: is_default === true,
+      parentMatrixId: parent_matrix_id || null,
+    });
+  } catch (error) {
+    return { error: error.message };
+  }
 
   return {
     success: true,
     message: `Matrix "${matrix.name}" created. Add elements with upsert_element, then wire them with set_correlation.`,
-    matrix: { id: matrix.id, name: matrix.name, periodType: matrix.periodType },
+    matrix: { id: matrix.id, name: matrix.name, periodType: matrix.periodType, parentMatrixId: matrix.parentMatrixId },
   };
 }
 
@@ -223,6 +230,7 @@ async function handleUpsertElement(args) {
     unit,
     indicator_type,
     external_ref,
+    parent_element_id,
   } = args;
 
   const matrixId = await resolveMatrixId(matrix_id);
@@ -242,6 +250,7 @@ async function handleUpsertElement(args) {
   if (unit !== undefined) patch.unit = unit;
   if (indicator_type !== undefined) patch.indicatorType = indicator_type;
   if (external_ref !== undefined) patch.externalRef = external_ref || null;
+  if (parent_element_id !== undefined) patch.parentElementId = parent_element_id || null;
 
   try {
     const { element, created } = await store.upsertElement(matrixId, element_id ?? null, patch);
@@ -252,6 +261,31 @@ async function handleUpsertElement(args) {
         ? `Element "${element.title}" created in ${getQuadrantLabel(element.quadrant)}`
         : `Element "${element.title}" updated`,
       element,
+    };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function handleGetCascade(args) {
+  const matrixId = await resolveMatrixId(args.matrix_id);
+  if (!matrixId) return { error: 'No matrix found. Create one first with create_matrix.' };
+  try {
+    return await store.getCascade(matrixId);
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function handleSetMatrixParent(args) {
+  const { matrix_id, parent_matrix_id } = args;
+  if (!matrix_id) return { error: 'matrix_id is required' };
+  try {
+    const matrix = await store.setMatrixParent(matrix_id, parent_matrix_id || null);
+    return {
+      success: true,
+      message: matrix.parentMatrixId ? `Matrix "${matrix.name}" attached under its parent` : `Matrix "${matrix.name}" detached`,
+      matrix: { id: matrix.id, name: matrix.name, parentMatrixId: matrix.parentMatrixId },
     };
   } catch (error) {
     return { error: error.message };
@@ -598,6 +632,12 @@ async function main() {
           break;
         case 'upsert_element':
           result = await handleUpsertElement(args || {});
+          break;
+        case 'get_cascade':
+          result = await handleGetCascade(args || {});
+          break;
+        case 'set_matrix_parent':
+          result = await handleSetMatrixParent(args || {});
           break;
         case 'set_correlation':
           result = await handleSetCorrelation(args || {});

@@ -1,7 +1,7 @@
 {
   "name": "hoshin-kanri-mcp",
-  "version": "3.0.0",
-  "description": "Hoshin Kanri X-Matrix MCP server — sovereign local JSON mode (data never leaves your machine) or remote API mode. 14 tools, 9 guided prompts: strategy deployment, review cadences, completeness score, weekly execution sync.",
+  "version": "3.1.0",
+  "description": "Hoshin Kanri X-Matrix MCP server — sovereign local JSON mode (data never leaves your machine) or remote API mode. 16 tools, 9 guided prompts: strategy deployment, review cadences, completeness score, weekly execution sync.",
   "type": "module",
   "mcpName": "io.github.wellknownmcp/hoshin-kanri",
   "license": "MIT",

@@ -8,7 +8,7 @@
     "url": "https://github.com/wellknownmcp/hoshin-kanri",
     "source": "github"
   },
-  "version": "3.0.0",
+  "version": "3.1.0",
   "remotes": [
     { "type": "streamable-http", "url": "https://hoshin.app/mcp" }
   ],
@@ -17,7 +17,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "hoshin-kanri-mcp",
-      "version": "3.0.0",
+      "version": "3.1.0",
       "transport": { "type": "stdio" }
     }
   ],
@@ -28,7 +28,8 @@
       "documentation": "https://hoshin.app",
       "highlights": [
         "create_matrix, upsert_element and set_correlation: an agent builds a strategy from nothing, then keeps it current — no web form in the loop",
-        "14 tools + 9 guided prompts: idea inbox, theme deployment diagnosis, weekly execution sync (Linear/Jira via external_ref)",
+        "get_cascade and set_matrix_parent: group, business-unit and site matrices linked, with what each level took up and what nobody did",
+        "16 tools + 9 guided prompts: idea inbox, theme deployment diagnosis, weekly execution sync (Linear/Jira via external_ref)",
         "A completeness score that returns a verdict, not a dashboard: coverage, correlation density, orphan elements, vision-to-KPI chains, leading/lagging balance",
         "matrix_artifact prompt renders a boardroom-ready interactive X-Matrix artifact",
         "share_matrix publishes a revocable read-only public link",

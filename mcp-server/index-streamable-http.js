@@ -357,7 +357,8 @@ async function handleGetMatrixData(args, authContext) {
       name: matrix.name,
       year: matrix.year,
       status: matrix.status,
-      owner: matrix.owner
+      owner: matrix.owner,
+      parentMatrixId: matrix.parentMatrixId ?? null
     },
     quadrantLabels: {
       north: getQuadrantLabel('north'),
@@ -423,7 +424,7 @@ async function handleShareMatrix(args, authContext) {
 }
 
 async function handleCreateMatrix(args, authContext) {
-  const { name, description, period_type, period_start, period_end, is_default } = args;
+  const { name, description, period_type, period_start, period_end, is_default, parent_matrix_id } = args;
 
   if (!name || name.trim().length === 0) {
     return { error: 'name is required' };
@@ -441,7 +442,8 @@ async function handleCreateMatrix(args, authContext) {
       periodType: period_type ?? 'annual',
       periodStart: period_start ?? undefined,
       periodEnd: period_end ?? undefined,
-      isDefault: is_default === true
+      isDefault: is_default === true,
+      parentMatrixId: parent_matrix_id || undefined
     })
   });
 
@@ -449,7 +451,7 @@ async function handleCreateMatrix(args, authContext) {
   return {
     success: true,
     message: `Matrix "${matrix.name}" created. Add elements with upsert_element, then wire them with set_correlation.`,
-    matrix: { id: matrix.id, name: matrix.name, periodType: matrix.periodType },
+    matrix: { id: matrix.id, name: matrix.name, periodType: matrix.periodType, parentMatrixId: matrix.parentMatrixId ?? null },
     organization: authContext.organizationName
   };
 }
@@ -473,7 +475,8 @@ async function handleUpsertElement(args, authContext) {
     current_value,
     unit,
     indicator_type,
-    external_ref
+    external_ref,
+    parent_element_id
   } = args;
 
   const headers = {
@@ -498,6 +501,7 @@ async function handleUpsertElement(args, authContext) {
   if (unit !== undefined) body.unit = unit;
   if (indicator_type !== undefined) body.indicatorType = indicator_type;
   if (external_ref !== undefined) body.externalRef = external_ref || null;
+  if (parent_element_id !== undefined) body.parentElementId = parent_element_id || null;
 
   const created = !element_id;
   const result = await callAPI(
@@ -511,6 +515,37 @@ async function handleUpsertElement(args, authContext) {
     created,
     message: created ? `Element "${element.title}" created` : `Element "${element.title}" updated`,
     element,
+    organization: authContext.organizationName
+  };
+}
+
+async function handleGetCascade(args, authContext) {
+  const headers = {
+    'Authorization': `Bearer ${authContext.token}`,
+    'X-Organization-Id': authContext.organizationId
+  };
+  const matrixId = await resolveMatrixId(args.matrix_id, headers);
+  if (!matrixId) return { error: 'No matrix found. Create one first with create_matrix.' };
+  const cascade = await callAPI(`/api/matrices/${matrixId}/cascade`, { headers });
+  return { ...cascade, organization: authContext.organizationName };
+}
+
+async function handleSetMatrixParent(args, authContext) {
+  const { matrix_id, parent_matrix_id } = args;
+  if (!matrix_id) return { error: 'matrix_id is required' };
+  const headers = {
+    'Authorization': `Bearer ${authContext.token}`,
+    'X-Organization-Id': authContext.organizationId
+  };
+  const updated = await callAPI(`/api/matrices/${matrix_id}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ parentMatrixId: parent_matrix_id || null })
+  });
+  return {
+    success: true,
+    message: updated.parentMatrixId ? `Matrix "${updated.name}" attached under its parent` : `Matrix "${updated.name}" detached`,
+    matrix: { id: updated.id, name: updated.name, parentMatrixId: updated.parentMatrixId ?? null },
     organization: authContext.organizationName
   };
 }
@@ -1107,6 +1142,12 @@ function createServer(authContext) {
           break;
         case 'upsert_element':
           result = await handleUpsertElement(args || {}, authContext);
+          break;
+        case 'get_cascade':
+          result = await handleGetCascade(args || {}, authContext);
+          break;
+        case 'set_matrix_parent':
+          result = await handleSetMatrixParent(args || {}, authContext);
           break;
         case 'set_correlation':
           result = await handleSetCorrelation(args || {}, authContext);

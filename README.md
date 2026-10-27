@@ -6,7 +6,7 @@ objectives, initiatives, KPIs, the correlations between them, the review
 cadences that keep them alive, and a completeness score that gives a verdict
 instead of a vibe.
 
-**11 tools · 9 guided prompts · 3 transports · MIT.**
+**16 tools · 9 guided prompts · 3 transports · MIT.**
 
 Registry entry: [`io.github.wellknownmcp/hoshin-kanri`](https://registry.modelcontextprotocol.io)
 · npm: [`hoshin-kanri-mcp`](https://www.npmjs.com/package/hoshin-kanri-mcp)
@@ -73,9 +73,10 @@ config file to edit — add the URL as a connector and authorize.
 | `mcp-server/index-local.js` | stdio transport, local JSON store — the npm default bin |
 | `mcp-server/index-stdio.js` | stdio transport against the hosted API |
 | `mcp-server/index-streamable-http.js` | Streamable HTTP transport, the one serving `hoshin.app/mcp` |
-| `mcp-server/lib/tool-definitions.js` | the 11 tool schemas, shared by all three transports |
+| `mcp-server/lib/tool-definitions.js` | the 16 tool schemas, shared by all three transports |
 | `mcp-server/lib/prompt-definitions.js` | the 9 guided prompts, shared by all three transports |
 | `mcp-server/lib/completeness.js` | the completeness score, as pure functions |
+| `mcp-server/lib/cascade.js` | the group → business unit → site analysis, as pure functions |
 | `mcp-server/lib/json-store.js` | atomic local JSON store (tmp + rename, in-process mutex) |
 | `docs/completeness-score.md` | the score specification — metrics, weights, response shape |
 | `docs/data-residency.md` | where your strategy lives, per transport |
@@ -91,9 +92,10 @@ not an aspiration — with one deliberate exception, documented below.
 `get_matrix_data` · `get_matrix_summary` · `get_matrix_completeness` ·
 `list_objectives` · `update_element_status` · `add_idea` · `search_ideas` ·
 `get_management_architecture` · `diagnose_theme_deployment` ·
-`suggest_meeting_for_topic` · `share_matrix`
+`suggest_meeting_for_topic` · `share_matrix` · `create_matrix` ·
+`upsert_element` · `set_correlation` · `get_cascade` · `set_matrix_parent`
 
-Two worth calling out:
+A few worth calling out:
 
 - **`get_matrix_completeness`** returns a 0–100 score across five metrics
   (coverage, correlation density, orphan elements, end-to-end strategic chains,
@@ -103,6 +105,15 @@ Two worth calling out:
   Linear/Jira/GitHub project implementing that initiative. Strategy lives here,
   tasks live in your execution tool, and the `weekly_sync` prompt walks an agent
   across both.
+- **`create_matrix`**, **`upsert_element`** and **`set_correlation`** let an
+  agent build a strategy from nothing, then keep it current.
+- **`get_cascade`** reads a deployment across levels — a group matrix, its
+  business units, their sites. A matrix points to the one above it
+  (`parent_matrix_id`, or `set_matrix_parent` later); an element points to the
+  element of the parent matrix it deploys (`parent_element_id`). The report
+  gives, for each level, the annual objectives and initiatives the children took
+  up, the ones nobody took up, the child objectives anchored to nothing above,
+  and a coverage percentage. Same org, no cycles, four levels at most.
 
 `share_matrix` publishes a revocable, read-only public page of a matrix. It is
 **refused in local mode** — by design: in sovereign mode there is no cloud for
