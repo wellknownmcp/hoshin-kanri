@@ -10,7 +10,10 @@
   },
   "version": "4.5.0",
   "remotes": [
-    { "type": "streamable-http", "url": "https://hoshin.app/mcp" }
+    {
+      "type": "streamable-http",
+      "url": "https://hoshin.app/mcp"
+    }
   ],
   "packages": [
     {
@@ -18,24 +21,33 @@
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "hoshin-kanri-mcp",
       "version": "4.5.0",
-      "transport": { "type": "stdio" }
+      "transport": {
+        "type": "stdio"
+      }
     }
   ],
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "vendor": "Animam Technologies",
-      "categories": ["strategy", "planning", "lean", "okr", "management"],
-      "documentation": "https://hoshin.app",
+      "categories": [
+        "strategy",
+        "planning",
+        "lean",
+        "okr",
+        "management"
+      ],
+      "documentation": "https://hoshin.app/connect-your-agent",
       "highlights": [
-        "create_matrix, upsert_element and set_correlation: an agent builds a strategy from nothing, then keeps it current — no web form in the loop",
-        "get_cascade and set_matrix_parent: group, business-unit and site matrices linked, with what each level took up and what nobody did",
-        "list_matrices and KPI target/current values in every read: the agent picks the site or language it is asked about, and sees which indicator is off-track",
-        "34 tools + 9 guided prompts: idea inbox, theme deployment diagnosis, weekly execution sync (Linear/Jira via external_ref)",
-        "A completeness score that returns a verdict, not a dashboard: coverage, correlation density, orphan elements, vision-to-KPI chains, leading/lagging balance",
-        "matrix_artifact prompt renders a boardroom-ready interactive X-Matrix artifact",
-        "share_matrix publishes a revocable read-only public link",
-        "OAuth 2.1 with PKCE and dynamic client registration - connects to claude.ai and Cursor in minutes",
-        "Sovereign local JSON mode available (data never leaves your machine)"
+        "Claude plugin with six skills (marketplace wellknownmcp/hoshin-kanri): the connector and the know-how to build a strategy, run its reviews and share it",
+        "show_matrix: the X-Matrix and its initiative cards drawn in the conversation as an MCP App",
+        "Review cycle: get_agenda tells a recurring agent what is due; record_review keeps the decisions and a snapshot of the matrix; get_review reads it back",
+        "KPI readings by period with their source, initiative sheets and KPI definitions, so every agent computes a number the same way",
+        "audience external: elements marked internal, figures and names never leave the organization, for agents and public links alike",
+        "export_matrix_image: SVG or PNG for a deck, vision at the bottom or on top, or one page per initiative",
+        "create_matrix, upsert_element, set_correlation: an agent builds a strategy from nothing; get_cascade links group, unit and site matrices",
+        "A completeness score that returns a verdict: coverage, correlation density, orphan elements, vision-to-KPI chains, leading/lagging balance",
+        "OAuth 2.1 with Client ID Metadata Documents and dynamic registration; MCP revisions 2026-07-28 and 2025-11-25",
+        "Sovereign local JSON mode: the same 34 tools, data never leaves your machine"
       ]
     }
   }
