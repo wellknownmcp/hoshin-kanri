@@ -1,0 +1,12 @@
+{
+  "name": "hoshin-kanri",
+  "description": "Hoshin Kanri X-Matrix for Claude: the hoshin.app connector and the skills to build a strategy, run its reviews and share it.",
+  "owner": { "name": "Animam Technologies", "url": "https://hoshin.app" },
+  "plugins": [
+    {
+      "name": "hoshin-kanri",
+      "source": "./mcp-server/plugin/hoshin-kanri",
+      "description": "Build an X-Matrix, keep its KPI readings and initiative sheets current, prepare and record reviews, share it outside without leaking what is internal."
+    }
+  ]
+}

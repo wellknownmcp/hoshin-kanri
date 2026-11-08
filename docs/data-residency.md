@@ -9,15 +9,14 @@ the strictest option costs you nothing in capability.
 
 ## Three transports, three levels of residency
 
-The MCP tool surface is deliberately **agnostic of storage**. Same 11 tools,
+The MCP tool surface is deliberately **agnostic of storage**. Same 34 tools,
 same 9 prompts, same completeness score — the agent cannot tell where the data
 lives, because the tool contract is identical.
 
 | Transport | Your data lives | Requires |
 |---|---|---|
 | `index-local.js` | **plain JSON files on your machine** (`~/hoshin-data/`) | nothing — no account, no network |
-| `index-stdio.js` | the hosted API, accessed from your machine | an account + a token |
-| `index-streamable-http.js` | the hosted API, multi-tenant | an account + OAuth 2.1 |
+| `index-streamable-http.js` | the hosted API, multi-tenant, hosted in France (OVH) | an account + OAuth 2.1 or an API token |
 
 Local mode is the default binary of the npm package. That ordering is the
 argument: sovereignty is not the degraded tier.

@@ -6,7 +6,7 @@ objectives, initiatives, KPIs, the correlations between them, the review
 cadences that keep them alive, and a completeness score that gives a verdict
 instead of a vibe.
 
-**16 tools · 9 guided prompts · 3 transports · MIT.**
+**34 tools · 9 guided prompts · 2 transports · a Claude plugin · MCP revisions 2026-07-28 and 2025-11-25 · MIT.**
 
 Registry entry: [`io.github.wellknownmcp/hoshin-kanri`](https://registry.modelcontextprotocol.io)
 · npm: [`hoshin-kanri-mcp`](https://www.npmjs.com/package/hoshin-kanri-mcp)
@@ -24,10 +24,44 @@ by forty years. This server exposes it over the Model Context Protocol.
 
 ## Install
 
+### Claude plugin — the connector and the know-how in one step
+
+The plugin bundles the hosted connector with six skills that tell Claude how to work with an X-Matrix:
+build one, run the review cycle, follow it on a schedule, share it outside without leaking what is
+internal, build a cockpit, sync initiatives with Linear or Jira.
+
+- **claude.ai, Claude desktop, Cowork**: Customize > Plugins > Add > Add marketplace, enter
+  `wellknownmcp/hoshin-kanri`, then add **Hoshin Kanri X-Matrix** and connect its **hoshin** connector.
+- **Claude Code**: `/plugin install hoshin-kanri --marketplace wellknownmcp/hoshin-kanri`
+
+Source: [`mcp-server/plugin/hoshin-kanri`](mcp-server/plugin/hoshin-kanri).
+
+### Hosted mode — OAuth 2.1, nothing to install
+
+Any MCP client connects to `https://hoshin.app/mcp` (claude.ai, Claude Desktop, Claude Code, Cursor).
+Dynamic client registration, Client ID Metadata Documents and PKCE: add the URL as a connector and
+authorize. One connection acts in one organization, chosen on the consent screen.
+
+<details>
+<summary>Or with an API token</summary>
+
+```json
+{
+  "mcpServers": {
+    "hoshin-kanri": {
+      "type": "http",
+      "url": "https://hoshin.app/mcp",
+      "headers": { "Authorization": "Bearer hk_..." }
+    }
+  }
+}
+```
+</details>
+
 ### Sovereign local mode — nothing leaves your machine
 
-Your matrix lives in plain JSON files on your own disk. No account, no cloud,
-no telemetry. This is the default binary of the npm package, on purpose.
+Your matrix lives in plain JSON files on your own disk. No account, no cloud, no telemetry. This is the
+default binary of the npm package, on purpose.
 
 ```json
 {
@@ -41,122 +75,51 @@ no telemetry. This is the default binary of the npm package, on purpose.
 }
 ```
 
-`HOSHIN_DATA_DIR` defaults to `~/hoshin-data/`. The files *are* the export:
-readable, diffable, versionable, yours. See [docs/data-residency.md](docs/data-residency.md).
-
-### Hosted mode — OAuth 2.1, nothing to install
-
-claude.ai, Claude Desktop and Cursor connect straight to `https://hoshin.app/mcp`.
-Dynamic client registration + PKCE, so there is no token to paste and no
-config file to edit — add the URL as a connector and authorize.
-
-<details>
-<summary>Or with a static API token, over stdio</summary>
-
-```json
-{
-  "mcpServers": {
-    "hoshin-kanri": {
-      "command": "npx",
-      "args": ["-y", "-p", "hoshin-kanri-mcp", "hoshin-kanri-mcp-remote"],
-      "env": { "AUTH_TOKEN": "hk_..." }
-    }
-  }
-}
-```
-</details>
+`HOSHIN_DATA_DIR` defaults to `~/hoshin-data/`. The files *are* the export: readable, diffable,
+versionable, yours. See [docs/data-residency.md](docs/data-residency.md).
 
 ## What is in here
 
 | Path | What |
 |---|---|
 | `mcp-server/index-local.js` | stdio transport, local JSON store — the npm default bin |
-| `mcp-server/index-stdio.js` | stdio transport against the hosted API |
 | `mcp-server/index-streamable-http.js` | Streamable HTTP transport, the one serving `hoshin.app/mcp` |
-| `mcp-server/lib/tool-definitions.js` | the 16 tool schemas, shared by all three transports |
-| `mcp-server/lib/prompt-definitions.js` | the 9 guided prompts, shared by all three transports |
+| `mcp-server/lib/tool-definitions.js` | the 34 tool schemas, shared by both transports |
+| `mcp-server/lib/prompt-definitions.js` | the 9 guided prompts, shared by both transports |
+| `mcp-server/lib/help.js` | `get_help`: the server's own manual, for clients that show no prompts |
 | `mcp-server/lib/completeness.js` | the completeness score, as pure functions |
 | `mcp-server/lib/cascade.js` | the group → business unit → site analysis, as pure functions |
+| `mcp-server/lib/agenda.js` | what is due in the review cycle, as pure functions |
+| `mcp-server/lib/xmatrix-svg.js` | the X-Matrix and initiative pages drawn as SVG |
+| `mcp-server/lib/external-view.js` | what may leave an organization, for every external reading |
+| `mcp-server/lib/matrix-view.js` | the MCP App view of `show_matrix` |
 | `mcp-server/lib/json-store.js` | atomic local JSON store (tmp + rename, in-process mutex) |
+| `mcp-server/plugin/hoshin-kanri` | the Claude plugin: connector and skills |
 | `docs/completeness-score.md` | the score specification — metrics, weights, response shape |
 | `docs/data-residency.md` | where your strategy lives, per transport |
 | `server.json` | the MCP registry manifest |
+| `.claude-plugin/marketplace.json` | the plugin marketplace of this repository |## Tools
 
-Tool and prompt *definitions* are shared across transports by design: only the
-handlers differ. A tool that exists in hosted mode and not in local mode would
-quietly make the sovereign mode a second-class citizen, so parity is a rule,
-not an aspiration — with one deliberate exception, documented below.
+The full list, grouped by what an agent does with them, is in
+[`mcp-server/README.md`](mcp-server/README.md#tools). A few worth calling out:
 
-## Tools
+- **`get_matrix_completeness`** returns a 0–100 score across five metrics (coverage, correlation density,
+  orphan elements, end-to-end strategic chains, leading/lagging indicator balance) with the specific
+  suggestions behind it. This is the part that makes an agent useful rather than agreeable.
+- **`get_agenda`** tells a recurring agent where the organization stands in its review cycle and what is
+  due, with stable keys and a `since` cursor so it never acts twice. **`record_review`** keeps the
+  decisions as stated and a snapshot of the matrix the review saw; **`get_review`** reads it back.
+- **`update_element_status`** records a KPI reading for a period with where it was read
+  (`origin_tool`, `origin_ref`, `extracted_at`), or an initiative's progress; `external_ref` links the
+  Linear/Jira/GitHub project. **`upsert_initiative_sheet`** and **`set_kpi_definition`** keep what a
+  committee reads and how each number is computed.
+- **`get_matrix_data`** with `audience: "external"` applies the filter of a public link: elements marked
+  internal, figures and names never leave the organization. **`export_matrix_image`** draws the matrix
+  for a deck (SVG or PNG, vision at the bottom or on top); **`show_matrix`** displays it in the
+  conversation as an MCP App.
+- **`get_cascade`** reads a deployment across levels — a group matrix, its business units, their sites.
 
-`get_matrix_data` · `get_matrix_summary` · `get_matrix_completeness` ·
-`list_objectives` · `update_element_status` · `add_idea` · `search_ideas` ·
-`get_management_architecture` · `diagnose_theme_deployment` ·
-`suggest_meeting_for_topic` · `share_matrix` · `create_matrix` ·
-`upsert_element` · `set_correlation` · `get_cascade` · `set_matrix_parent`
+`share_matrix` publishes a revocable, read-only public page of a matrix. It is **refused in local mode** —
+by design: in sovereign mode there is no cloud for your data to leak into.
 
-A few worth calling out:
 
-- **`get_matrix_completeness`** returns a 0–100 score across five metrics
-  (coverage, correlation density, orphan elements, end-to-end strategic chains,
-  leading/lagging indicator balance) with the specific suggestions behind it.
-  This is the part that makes an agent useful rather than agreeable.
-- **`update_element_status`** accepts an `external_ref` — the URL or key of the
-  Linear/Jira/GitHub project implementing that initiative. Strategy lives here,
-  tasks live in your execution tool, and the `weekly_sync` prompt walks an agent
-  across both.
-- **`create_matrix`**, **`upsert_element`** and **`set_correlation`** let an
-  agent build a strategy from nothing, then keep it current.
-- **`get_cascade`** reads a deployment across levels — a group matrix, its
-  business units, their sites. A matrix points to the one above it
-  (`parent_matrix_id`, or `set_matrix_parent` later); an element points to the
-  element of the parent matrix it deploys (`parent_element_id`). The report
-  gives, for each level, the annual objectives and initiatives the children took
-  up, the ones nobody took up, the child objectives anchored to nothing above,
-  and a coverage percentage. Same org, no cycles, four levels at most.
-
-`share_matrix` publishes a revocable, read-only public page of a matrix. It is
-**refused in local mode** — by design: in sovereign mode there is no cloud for
-your data to leak into, so there is nothing to publish from.
-
-## Prompts
-
-`weekly_sync` (pull execution progress from your issue tracker's MCP, update
-statuses, prepare the weekly agenda) · `matrix_artifact` (a boardroom-ready
-interactive X-Matrix) · `strategic_review` · `deployment_diagnosis` ·
-`indicator_balance` · `meeting_setup_guide` · `visual_matrix` · `export_data` ·
-`idea_triage`
-
-## Development
-
-```bash
-cd mcp-server
-pnpm install
-pnpm start:local    # sovereign JSON mode
-pnpm start:stdio    # hosted API mode (AUTH_TOKEN, API_BASE_URL)
-pnpm start          # Streamable HTTP (server-side; MCP_PORT, API_BASE_URL, OAUTH_ISSUER)
-```
-
-Smoke-test the local transport without any client:
-
-```bash
-printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}' \
-  | HOSHIN_DATA_DIR=/tmp/hoshin-smoke node index-local.js 2>/dev/null
-```
-
-stdout carries JSON-RPC only; logs and the startup banner go to stderr.
-
-This repository holds the MCP server and its specifications. The hosted web
-application (Next.js, Prisma, the OAuth 2.1 authorization server) is a separate,
-closed codebase — the MIT code here is what you run, and what you can audit
-before running it.
-
-Issues and pull requests are welcome, in English or French.
-
-## Learn more
-
-- [What is Hoshin Kanri?](https://hoshin.app/what-is-hoshin-kanri)
-- [AI in lean management: start with steering](https://hoshin.app/ai-lean-management)
-- [Model Context Protocol](https://modelcontextprotocol.io)
-
-MIT — the code is a commodity; your strategy is not.

@@ -57,7 +57,7 @@ export const promptsList = [
     arguments: [
       {
         name: 'matrix_id',
-        description: 'UUID of the matrix to render (optional, uses the first active matrix)',
+        description: 'UUID of the matrix to render (optional, uses the default matrix; list_matrices gives the ids)',
         required: false
       }
     ]
@@ -117,8 +117,8 @@ graph TD
 Use arrow labels (strong/medium/weak) and color-code nodes by status:
 - Active: default
 - Completed: style with green (#22c55e)
-- On hold: style with amber (#f59e0b)
-- At risk (orphan or broken chain): style with red (#ef4444)
+- Draft: style with a dashed grey border
+- At risk (orphan or broken chain, computed from the correlations): style with red (#ef4444)
 
 Also present a summary table of each quadrant suitable for copy-paste into Excel.`
         }
@@ -141,6 +141,7 @@ For each idea, help me decide:
 3. Should it be accepted, rejected, or needs more review?
 
 Group related ideas and suggest which quadrant they might belong to if accepted.
+Once I confirm a decision, apply it with update_idea (status, priority, and linked_element_id when the idea serves an existing element).
 
 **Output format:**
 Present the triage results as a markdown table ready for Excel export:
@@ -185,7 +186,7 @@ mindmap
 
 **Your task:**
 1. Use get_matrix_completeness to get the current indicator balance score
-2. Identify which objectives/initiatives are missing indicators
+2. Identify which objectives/initiatives are missing indicators. An objective is judged through the KPIs of its initiatives: East and West do not link directly, so the fix is always an initiative-to-KPI link (South-West)
 3. For each unbalanced element, suggest:
    - If missing RESULT indicator: what outcome should we measure?
    - If missing PERFORMANCE indicator: what process metric should we track?
@@ -202,14 +203,18 @@ graph LR
   subgraph "Objectives (East)"
     E1["Objective"]
   end
+  subgraph "Initiatives (South)"
+    S1["Initiative"]
+  end
   subgraph "Result KPIs"
     R1["Revenue"]:::result
   end
   subgraph "Performance KPIs"
     P1["Calls/week"]:::perf
   end
-  E1 --> R1
-  E1 -.->|MISSING| P1
+  E1 --> S1
+  S1 --> R1
+  S1 -.->|MISSING| P1
   classDef result fill:#3b82f6,color:#fff
   classDef perf fill:#f59e0b,color:#fff
 \`\`\`
@@ -451,8 +456,7 @@ Provide a markdown summary table of all elements with their status, quadrant, an
 
 **Step 1: Gather all data**
 Call these tools to collect the full dataset:
-- get_matrix_summary (with include_correlations=true)
-- list_objectives (all quadrants)
+- get_matrix_data (every element with status, target, current value and indicator type, and every correlation — do not rebuild correlations from get_matrix_summary, which keeps only five)
 - get_matrix_completeness
 - search_ideas (all statuses)
 - get_management_architecture
@@ -461,8 +465,8 @@ Call these tools to collect the full dataset:
 Format the data as markdown tables optimized for Excel copy-paste. Generate one table per sheet:
 
 **Sheet 1: X-Matrix Elements**
-| ID | Quadrant | Title | Status | Progress | Indicator Type | Correlation Count |
-|----|----------|-------|--------|----------|---------------|-------------------|
+| ID | Quadrant | Title | Status | Current / Target | Indicator Type | Correlation Count |
+|----|----------|-------|--------|------------------|---------------|-------------------|
 
 **Sheet 2: Correlations**
 | From Element | From Quadrant | To Element | To Quadrant | Strength |
@@ -512,13 +516,13 @@ Call get_matrix_data (pass matrix_id if I gave one). It returns every element of
 
 **Step 2 — Build a single-page interactive artifact.**
 One self-contained page (React or HTML), no external assets (the artifact sandbox blocks external requests). Layout — the classic X-Matrix reading order around the center:
-- CENTER: matrix name + year + completeness score badge (color: ≥80 green, ≥60 amber, else red)
+- CENTER: matrix name + completeness score badge (color: ≥80 green, ≥60 amber, else red)
 - NORTH (top): long-term strategic objectives (3-5 years)
 - EAST (right): annual objectives
 - SOUTH (bottom): initiatives / projects
 - WEST (left): KPIs & metrics
 
-Element cards show: title, status color (active=neutral, completed=green, on_hold=amber, cancelled=strikethrough), progress bar when progress/currentValue exists, and a small link icon when externalRef is set (clickable only for http/https values — never render other schemes as links).
+Element cards show: title, status color (draft=dashed, active=neutral, completed=green, cancelled=strikethrough), current value against target when both are set (values are strings and may use a decimal comma), and a small link icon when externalRef is set (clickable only for http/https values — never render other schemes as links).
 
 Interactions that matter (keep it simple, this is a boardroom tool, not a dashboard):
 - Click an element → highlight its correlated elements across quadrants (use the correlations list; stronger = thicker/darker highlight) and dim the rest. Click again to reset.
@@ -533,7 +537,7 @@ Design for projection: large readable type, high contrast, works on a 1280px pro
 - Sharing rule (sovereignty): on Team/Enterprise plans artifacts can only be shared inside the organization, to authenticated members — fine for a leadership committee. Do not publish a public copy of the matrix; the strategy is confidential by default.
 
 **Step 4 — Meeting mode hint.**
-Remind me that during the meeting I can dictate changes ("mark initiative X at risk", "log the decision to freeze project Y") — you apply them with update_element_status and add_idea, then refresh or regenerate the artifact so the room sees the update.`
+Remind me that during the meeting I can dictate changes ("initiative X is done", "KPI Y is now at 1.2", "log the decision to freeze project Y") — you apply them with update_element_status (status, current_value, notes) and add_idea, then refresh or regenerate the artifact so the room sees the update.`
         }
       }
     ]
@@ -554,12 +558,12 @@ Remind me that during the meeting I can dictate changes ("mark initiative X at r
 - Never duplicate work items into Hoshin; never put strategy into the execution tool.
 
 **Step 1 — Map initiatives to execution.**
-Use list_objectives (quadrant: south) to get the initiatives. Each may carry an \\\`externalRef\\\` (URL or ID of the linked project in the execution tool). For each initiative with an externalRef, fetch the current state of that project from the execution tool's MCP (progress, recently completed work, blocked items, overdue items).
+Use list_objectives (quadrant: south, with matrix_id when the organization has several matrices) to get the initiatives. Each may carry an \\\`externalRef\\\` (URL or ID of the linked project in the execution tool). For each initiative with an externalRef, fetch the current state of that project from the execution tool's MCP (progress, recently completed work, blocked items, overdue items).
 
 **Step 2 — Update Hoshin statuses.**
 For each initiative where execution data shows a meaningful change, call update_element_status:
-- progress: estimate 0-100 from completed vs total scope
-- notes: 1-2 lines max — decisions and blockers, not a task list
+- progress: estimate 0-100 from completed vs total scope (initiatives only — a KPI takes its measured value in current_value, recorded for the current quarter unless you pass period)
+- notes: 1-2 lines max — decisions and blockers, not a task list; they are logged with the date, so do not repeat last week's note
 - status: 'completed' if the project shipped, keep 'active' otherwise
 
 **Step 3 — Flag the gaps.**
@@ -568,7 +572,7 @@ For each initiative where execution data shows a meaningful change, call update_
 
 **Step 4 — Prepare the weekly cadence agenda.**
 Use get_management_architecture to find the weekly-level cadence. Build a proposed agenda:
-1. KPIs off-track (west elements where currentValue lags targetValue)
+1. KPIs off-track: west elements whose currentValue misses targetValue, and those whose last readings (get_matrix_data, measurements by period) move away from the target. Read the direction first — for defects, lead time, absenteeism or costs, lower is better; for revenue or on-time delivery, higher is better. Values are strings and may use a decimal comma ("1,4"). When the direction is unclear, say so instead of guessing.
 2. Blocked or stalled initiatives (from Step 1)
 3. Strategy drift items (from Step 3)
 4. Pending decisions from notes
@@ -580,6 +584,25 @@ Use get_management_architecture to find the weekly-level cadence. Build a propos
   }
 };
 
-export function getPromptMessages(name) {
-  return promptMessages[name] || { description: 'Unknown prompt', messages: [] };
+// Every prompt reads "the matrix": in an organization with a group and its
+// sites, or one matrix per language, that is ambiguous unless said.
+const SEVERAL_MATRICES =
+  'If the organization holds several matrices (a group and its sites, or one per language), call list_matrices first and pass matrix_id to the tools; otherwise they use the default matrix.';
+
+/**
+ * The prompt with the arguments the client passed. They used to be dropped:
+ * matrix_artifact's matrix_id or weekly_sync's execution_tool never reached the text.
+ */
+export function getPromptMessages(name, args = {}) {
+  const prompt = promptMessages[name];
+  if (!prompt) return { description: 'Unknown prompt', messages: [] };
+  const given = Object.entries(args || {})
+    .filter(([, v]) => typeof v === 'string' && v.trim() !== '')
+    .map(([k, v]) => `${k} = ${v.trim().slice(0, 200)}`);
+  const extra = [SEVERAL_MATRICES, given.length ? `Parameters I gave: ${given.join('; ')}.` : ''].filter(Boolean).join('\n\n');
+  const [first, ...rest] = prompt.messages;
+  return {
+    ...prompt,
+    messages: [{ ...first, content: { ...first.content, text: `${first.content.text}\n\n${extra}` } }, ...rest]
+  };
 }

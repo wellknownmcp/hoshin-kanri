@@ -64,6 +64,8 @@ export function parentLinkError(matrices, childId, parentId) {
 const ref = (e) => ({ id: e.id, title: e.title, quadrant: e.quadrant });
 const isActive = (e) => !INACTIVE.has(e.status);
 const pct = (num, den) => (den === 0 ? null : Math.round((num / den) * 100));
+// isActive false = archived: left out below the root, with its subtree.
+const archived = (m) => m.isActive === false;
 
 /** Analyse the subtree rooted at `rootId`. Returns null when the root is unknown. */
 export function analyzeCascade(matrices, rootId) {
@@ -82,7 +84,7 @@ export function analyzeCascade(matrices, rootId) {
     order.push(item);
     for (const cid of children.get(item.m.id) ?? []) {
       const c = byId.get(cid);
-      if (c) queue.push({ m: c, depth: item.depth + 1 });
+      if (c && !archived(c)) queue.push({ m: c, depth: item.depth + 1 });
     }
   }
 
@@ -90,7 +92,7 @@ export function analyzeCascade(matrices, rootId) {
   let deployedTotal = 0;
   let deployableTotal = 0;
   for (const { m } of order) {
-    const kids = (children.get(m.id) ?? []).map((id) => byId.get(id)).filter(Boolean);
+    const kids = (children.get(m.id) ?? []).map((id) => byId.get(id)).filter((c) => c && !archived(c));
     if (kids.length === 0) continue;
     const deployable = m.elements.filter((e) => isActive(e) && DEPLOYABLE_QUADRANTS.includes(e.quadrant));
     const deployed = [];

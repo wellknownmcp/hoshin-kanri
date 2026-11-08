@@ -42,6 +42,13 @@ export const STRENGTH_VALUES = {
  * Normalize a correlation object to snake_case fields
  * (JSON store uses camelCase, scoring functions expect snake_case)
  */
+const CORNERS = [['north', 'east'], ['south', 'east'], ['south', 'west'], ['north', 'west']];
+
+function onCorner(c) {
+  return CORNERS.some(([a, b]) =>
+    (c.from_quadrant === a && c.to_quadrant === b) || (c.from_quadrant === b && c.to_quadrant === a));
+}
+
 function normalizeCorrelation(c) {
   return {
     from_element_id: c.from_element_id || c.fromElementId,
@@ -86,7 +93,9 @@ export function computeCompleteness(matrix) {
     }))
   };
 
-  const correlations = (matrix.correlations || []).map(normalizeCorrelation);
+  // Only the four corners carry a correlation: a pair stored before that rule
+  // must not earn points nothing else can earn.
+  const correlations = (matrix.correlations || []).map(normalizeCorrelation).filter(onCorner);
 
   const coverageResult = calculateCoverage(elements);
   const densityResult = calculateDensity(elements, correlations);
@@ -326,12 +335,22 @@ function calculateIndicatorBalance(elements, correlations) {
 
   const adjacency = buildAdjacencyMap(correlations);
 
-  const eastAnalysis = analyzeIndicatorLinks(elements.east, resultIndicators, performanceIndicators, adjacency);
+  // An objective is measured through its initiatives: East and West do not touch.
+  // One with no initiative has nothing to judge here, the chains metric reports it.
+  const eastKpis = new Map();
+  for (const objective of elements.east) {
+    const initiatives = findLinkedElements(objective.id, elements.south, adjacency);
+    if (initiatives.length === 0) continue;
+    eastKpis.set(objective.id, new Set(initiatives.flatMap(i => [...(adjacency.get(i.id) || [])])));
+  }
+  const measuredEast = elements.east.filter(e => eastKpis.has(e.id));
+
+  const eastAnalysis = analyzeIndicatorLinks(measuredEast, resultIndicators, performanceIndicators, eastKpis);
   const southAnalysis = analyzeIndicatorLinks(elements.south, resultIndicators, performanceIndicators, adjacency);
 
   const eastScore = eastAnalysis.total > 0
     ? Math.round((eastAnalysis.balanced / eastAnalysis.total) * 100)
-    : (elements.east.length === 0 ? 0 : 100);
+    : 0;
 
   const southScore = southAnalysis.total > 0
     ? Math.round((southAnalysis.balanced / southAnalysis.total) * 100)
@@ -354,8 +373,8 @@ function calculateIndicatorBalance(elements, correlations) {
     east: { ...eastAnalysis, score: eastScore },
     south: { ...southAnalysis, score: southScore },
     unbalancedElements: [
-      ...eastAnalysis.details.filter(d => !d.balanced),
-      ...southAnalysis.details.filter(d => !d.balanced)
+      ...eastAnalysis.details.filter(d => !d.balanced).map(d => ({ ...d, quadrant: 'east' })),
+      ...southAnalysis.details.filter(d => !d.balanced).map(d => ({ ...d, quadrant: 'south' }))
     ]
   };
 }

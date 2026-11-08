@@ -1,5 +1,38 @@
 # Changelog
 
+## 4.5.0 — 2026-11-08 (since 3.1.0)
+
+### Breaking (4.0.0)
+
+- The stdio bridge to the hosted API (`hoshin-kanri-mcp-remote`) is retired: connect to
+  `https://hoshin.app/mcp` over HTTP, with OAuth or an API token in the `Authorization` header.
+- Built on the MCP SDK v2. Two protocol revisions are served: 2026-07-28 (stateless, `server/discover`)
+  and 2025-11-25 (`initialize`, sessions).
+
+### Added
+
+- **Claude plugin** (`mcp-server/plugin/hoshin-kanri`, marketplace at the repository root): the hosted
+  connector and six skills.
+- **`show_matrix`**: the X-Matrix and its initiative cards as an MCP App (SEP-1865, `ui://hoshin/matrix`),
+  displayed in the conversation by hosts that support it; text elsewhere.
+- **Review cycle**: `get_agenda` (and the `hoshin://agenda` resource), `schedule_review`,
+  `record_review` (decisions as stated, a snapshot of the matrix), `get_review`, `upsert_cadence`.
+- **KPI readings by period** with their source (`origin_tool`, `origin_ref`, `extracted_at`) and a
+  provisional or final status; a progress log for objectives and initiatives.
+- **`upsert_initiative_sheet`**, **`set_kpi_definition`**, **`list_members`**.
+- **What may leave an organization**: elements marked `internal`, `get_matrix_data`
+  `audience: "external"`, `share_matrix` `hide_figures` and `full_sheets`.
+- **`export_matrix_image`**: the matrix as SVG or PNG, vision at the bottom or on top, or one page per
+  initiative.
+- **Repair**: `archive_matrix`, `delete_matrix` (exact name required), `delete_element`.
+- **Identity and help**: `whoami`, `get_help` (the manual, for clients that show neither the server
+  instructions nor the prompts), `report_missing_capability`.
+
+### Fixed
+
+- The server instructions named the quadrants the other way round from the writing tools: north = vision,
+  east = annual objectives, south = initiatives, west = KPIs.
+
 ## 3.1.0
 
 ### Added — strategy deployed across levels

@@ -7,17 +7,8 @@
  * Port: 3101 (production)
  */
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  ListResourcesRequestSchema,
-  ListPromptsRequestSchema,
-  GetPromptRequestSchema,
-  isInitializeRequest
-} from '@modelcontextprotocol/sdk/types.js';
-
+import { NodeStreamableHTTPServerTransport, toNodeHandler } from '@modelcontextprotocol/node';
+import { Server, createMcpHandler, isInitializeRequest, isLegacyRequest } from '@modelcontextprotocol/server';
 import express from 'express';
 import dotenv from 'dotenv';
 import { randomUUID } from 'crypto';
@@ -25,6 +16,13 @@ import { promptsList, getPromptMessages } from './lib/prompt-definitions.js';
 import { tools, getQuadrantLabel } from './lib/tool-definitions.js';
 import { VERSION } from './lib/version.js';
 import { assertSafeEndpoint } from './lib/safe-endpoint.js';
+import { registerAgendaResource } from './lib/agenda-resource.js';
+import { apiErrorMessage, listMatrices, pickMatrix, findElement, elementBody, ideaUpdateBody, updateElementStatus, managementArchitecture, diagnoseThemeDeployment, suggestMeetingForTopic, getAgenda, scheduleReview, recordReview, whoami, reportMissingCapability, archiveMatrix, deleteMatrix, deleteElement, exportMatrixImage, getReview, upsertInitiativeSheet, setKpiDefinition, upsertCadence, listMembers, showMatrix } from './lib/remote-tools.js';
+import { toolResult } from './lib/matrix-view.js';
+import { getHelp, SERVER_INSTRUCTIONS } from './lib/help.js';
+import { allowedOrigins, originAllowed } from './lib/origin.js';
+import { createOrgHandlers } from './lib/org-handlers.js';
+import { createListenLimits } from './lib/listen-limits.js';
 
 // Load environment variables
 dotenv.config({ path: '../.env' });
@@ -34,7 +32,11 @@ const API_BASE = process.env.API_BASE_URL || 'http://localhost:3007';
 // Public URL of the OAuth-protected resource (RFC 9728 discovery). Falls back
 // to the issuer URL used by the Next.js app.
 const PUBLIC_URL = process.env.OAUTH_ISSUER || API_BASE;
-const WWW_AUTHENTICATE = `Bearer resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource"`;
+// The scope hint keeps a client from asking for every scope we list (mcp:admin included).
+const WWW_AUTHENTICATE = `Bearer resource_metadata="${PUBLIC_URL}/.well-known/oauth-protected-resource", scope="mcp:read mcp:write"`;
+
+// Origin validation (MCP Streamable HTTP, MUST): lib/origin.js.
+const ALLOWED_ORIGINS = allowedOrigins();
 
 // Session management: sessionId → { transport, server, authContext, principal,
 // organizationId, organizationName, lastSeen, activeStreams }
@@ -96,13 +98,23 @@ async function sweepIdleSessions(now = Date.now()) {
 
 const sweepTimer = setInterval(() => {
   sweepIdleSessions().catch((error) => console.error('Session sweep failed:', error.message));
+  orgHandlers.sweep().catch((error) => console.error('2026 handler sweep failed:', error.message));
 }, SESSION_SWEEP_MS);
 // Never hold the event loop open just to sweep.
 sweepTimer.unref();
 
 // Express app
 const app = express();
-app.use(express.json());
+// 2025-06-18 removed JSON-RPC batching; a bounded body and batch size keep a
+// token holder from making the SDK validate unbounded input (GHSA-f897-62hf-6gxq).
+const MAX_BODY_BYTES = 256 * 1024;
+app.use(express.json({ limit: MAX_BODY_BYTES }));
+app.use((req, res, next) => {
+  if (Array.isArray(req.body) && req.body.length > 20) {
+    return res.status(400).json({ jsonrpc: '2.0', error: { code: -32600, message: 'Batch too large' }, id: null });
+  }
+  next();
+});
 
 // ============================================
 // AUTH HELPERS
@@ -153,10 +165,15 @@ function extractToken(req) {
 
 // CORS
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (!originAllowed(origin, ALLOWED_ORIGINS)) {
+    return res.status(403).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Origin not allowed' }, id: null });
+  }
+  res.header('Access-Control-Allow-Origin', origin || '*');
+  res.header('Vary', 'Origin');
   res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id');
-  res.header('Access-Control-Expose-Headers', 'Mcp-Session-Id');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name, Last-Event-ID');
+  res.header('Access-Control-Expose-Headers', 'Mcp-Session-Id, WWW-Authenticate');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -186,7 +203,7 @@ async function callAPI(endpoint, options = {}) {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: response.statusText }));
-      throw new Error(error.message || error.error || `API error: ${response.status}`);
+      throw new Error(apiErrorMessage(response.status, error));
     }
 
     return await response.json();
@@ -196,8 +213,39 @@ async function callAPI(endpoint, options = {}) {
   }
 }
 
+/** callAPI bound to the caller's credentials, for the shared helpers in lib/remote-tools.js. */
+function apiFor(authContext) {
+  const auth = {
+    'Authorization': `Bearer ${authContext.token}`,
+    'X-Organization-Id': authContext.organizationId
+  };
+  return (endpoint, options = {}) => callAPI(endpoint, { ...options, headers: { ...auth, ...options.headers } });
+}
+
+/** A shared tool's answer, with the organization it acted in (errors pass through). */
+async function withOrg(pending, authContext) {
+  const result = await pending;
+  return result.error ? result : { ...result, organization: authContext.organizationName };
+}
+
+async function handleListMatrices(args, authContext) {
+  const matrices = await listMatrices(apiFor(authContext), { includeArchived: args.include_archived === true });
+  return { count: matrices.length, matrices, organization: authContext.organizationName };
+}
+
+async function handleUpdateIdea(args, authContext) {
+  const { idea_id } = args;
+  if (!idea_id) return { error: 'idea_id is required — find it with search_ideas' };
+  const body = ideaUpdateBody(args);
+  if (Object.keys(body).length === 0) {
+    return { error: 'Nothing to update: pass status, priority, linked_element_id, title, description or links' };
+  }
+  const idea = await apiFor(authContext)(`/api/ideas/${idea_id}`, { method: 'PUT', body: JSON.stringify(body) });
+  return { success: true, message: `Idea "${idea.title}" updated`, idea, organization: authContext.organizationName };
+}
+
 async function handleAddIdea(args, authContext) {
-  const { title, description, priority = 'medium', source = 'conversation', tags = [] } = args;
+  const { title, description, priority = 'medium', source = 'conversation', tags = [], linked_element_id, links } = args;
 
   if (!title || title.trim().length === 0) {
     return { error: 'Title is required' };
@@ -209,7 +257,7 @@ async function handleAddIdea(args, authContext) {
       'Authorization': `Bearer ${authContext.token}`,
       'X-Organization-Id': authContext.organizationId
     },
-    body: JSON.stringify({ title, description, priority, source, tags })
+    body: JSON.stringify({ title, description, priority, source, tags, linkedElementId: linked_element_id || undefined, links })
   });
 
   return {
@@ -221,7 +269,7 @@ async function handleAddIdea(args, authContext) {
 }
 
 async function handleListObjectives(args, authContext) {
-  const { quadrant = 'all', status = 'all' } = args;
+  const { quadrant = 'all', status = 'all', matrix_id } = args;
 
   // Call exports API for matrix data
   const result = await callAPI('/api/exports/matrices?include=elements', {
@@ -240,7 +288,13 @@ async function handleListObjectives(args, authContext) {
 
   // Extract elements from first matrix (or all)
   const objectives = [];
-  const matrices = Array.isArray(result.data) ? result.data : [result.data];
+  const all = Array.isArray(result.data) ? result.data : [result.data];
+  // An org with a group and its sites holds several matrices: without a
+  // matrix_id the rows of all of them come back, each tagged with its matrix.
+  const matrices = matrix_id ? all.filter(m => m && m.id === matrix_id) : all;
+  if (matrix_id && matrices.length === 0) {
+    return { error: `Matrix "${matrix_id}" not found — list_matrices gives the ids` };
+  }
 
   for (const matrix of matrices) {
     if (!matrix.elements) continue;
@@ -257,6 +311,7 @@ async function handleListObjectives(args, authContext) {
             ...el,
             quadrant: q,
             quadrantLabel: getQuadrantLabel(q),
+            matrixId: matrix.id,
             matrixName: matrix.name
           });
         }
@@ -271,7 +326,7 @@ async function handleListObjectives(args, authContext) {
 }
 
 async function handleGetMatrixSummary(args, authContext) {
-  const { include_correlations = true } = args;
+  const { matrix_id, include_correlations = true } = args;
 
   const headers = {
     'Authorization': `Bearer ${authContext.token}`,
@@ -286,9 +341,10 @@ async function handleGetMatrixSummary(args, authContext) {
   const ideasSummary = await callAPI('/api/exports/summary', { headers });
 
   const matrices = Array.isArray(result.data) ? result.data : [result.data];
-  const matrix = matrices[0];
+  const matrix = pickMatrix(matrices, matrix_id);
 
   if (!matrix) {
+    if (matrix_id) return { error: `Matrix "${matrix_id}" not found` };
     return {
       message: 'No X-Matrix found. Create your first matrix to get started.',
       ideasOverview: ideasSummary.overview
@@ -297,6 +353,7 @@ async function handleGetMatrixSummary(args, authContext) {
 
   // Calculate summary stats
   const summary = {
+    matrixId: matrix.id,
     matrixName: matrix.name,
     year: matrix.year,
     status: matrix.status,
@@ -324,18 +381,19 @@ async function handleGetMatrixSummary(args, authContext) {
 }
 
 async function handleGetMatrixData(args, authContext) {
-  const { matrix_id } = args;
+  const { matrix_id, audience = 'internal' } = args;
+  if (!['internal', 'external'].includes(audience)) return { error: 'audience must be "internal" or "external"' };
+  // External: the API applies the filter of lib/external-view.ts (docs/sprint-pages-de-repli.md).
+  const aud = audience === 'external' ? '&audience=external' : '';
 
   const headers = {
     'Authorization': `Bearer ${authContext.token}`,
     'X-Organization-Id': authContext.organizationId
   };
 
-  const result = await callAPI('/api/exports/matrices?include=elements,correlations', { headers });
+  const result = await callAPI(`/api/exports/matrices?include=elements,correlations${aud}`, { headers });
   const matrices = Array.isArray(result.data) ? result.data : [result.data];
-  const matrix = matrix_id
-    ? matrices.find(m => m && m.id === matrix_id)
-    : matrices[0];
+  const matrix = pickMatrix(matrices, matrix_id);
 
   if (!matrix) {
     return {
@@ -346,7 +404,7 @@ async function handleGetMatrixData(args, authContext) {
 
   let completeness = null;
   try {
-    completeness = await callAPI(`/api/matrices/${matrix.id}/completeness`, { headers });
+    completeness = await callAPI(`/api/matrices/${matrix.id}/completeness${aud ? '?audience=external' : ''}`, { headers });
   } catch {
     // completeness is optional context — the full dataset is still useful without it
   }
@@ -369,12 +427,14 @@ async function handleGetMatrixData(args, authContext) {
     elements: matrix.elements || { north: [], east: [], south: [], west: [] },
     correlations: matrix.correlations || [],
     completeness,
+    audience,
+    ...(audience === 'external' && { hiddenElements: matrix.hiddenElements ?? 0 }),
     organization: authContext.organizationName
   };
 }
 
 async function handleShareMatrix(args, authContext) {
-  const { action = 'create', matrix_id, share_id, label, expires_in_days } = args;
+  const { action = 'create', matrix_id, share_id, label, expires_in_days, hide_figures, full_sheets } = args;
 
   const headers = {
     'Authorization': `Bearer ${authContext.token}`,
@@ -412,7 +472,9 @@ async function handleShareMatrix(args, authContext) {
     headers,
     body: JSON.stringify({
       label: label ?? null,
-      expiresInDays: expires_in_days ?? null
+      expiresInDays: expires_in_days ?? null,
+      hideFigures: hide_figures === true,
+      fullSheets: full_sheets === true
     })
   });
 
@@ -456,7 +518,11 @@ async function handleCreateMatrix(args, authContext) {
   };
 }
 
-/** Resolve the matrix to write into: the one given, or the organization default. */
+/**
+ * Resolve the matrix to act on: the one given, or the organization default. Same
+ * rule as pickMatrix (lib/remote-tools.js): GET /api/matrices sorts the default
+ * first among the active ones.
+ */
 async function resolveMatrixId(matrixId, headers) {
   if (matrixId) return matrixId;
   const result = await callAPI('/api/matrices?isActive=true&limit=1', { headers });
@@ -464,44 +530,29 @@ async function resolveMatrixId(matrixId, headers) {
 }
 
 async function handleUpsertElement(args, authContext) {
-  const {
-    matrix_id,
-    element_id,
-    quadrant,
-    title,
-    description,
-    status,
-    target_value,
-    current_value,
-    unit,
-    indicator_type,
-    external_ref,
-    parent_element_id
-  } = args;
+  const { matrix_id, element_id, quadrant, title } = args;
 
   const headers = {
     'Authorization': `Bearer ${authContext.token}`,
     'X-Organization-Id': authContext.organizationId
   };
 
-  const matrixId = await resolveMatrixId(matrix_id, headers);
-  if (!matrixId) return { error: 'No matrix found. Create one first with create_matrix.' };
-
   if (!element_id && (!quadrant || !title)) {
     return { error: 'quadrant and title are required to create an element (or pass element_id to update one)' };
   }
 
-  const body = {};
-  if (quadrant !== undefined) body.quadrant = quadrant;
-  if (title !== undefined) body.title = title;
-  if (description !== undefined) body.description = description;
-  if (status !== undefined) body.status = status;
-  if (target_value !== undefined) body.targetValue = target_value;
-  if (current_value !== undefined) body.currentValue = current_value;
-  if (unit !== undefined) body.unit = unit;
-  if (indicator_type !== undefined) body.indicatorType = indicator_type;
-  if (external_ref !== undefined) body.externalRef = external_ref || null;
-  if (parent_element_id !== undefined) body.parentElementId = parent_element_id || null;
+  // Updating an element: it lives in its own matrix, which may not be the
+  // default one (a site in a cascade).
+  let matrixId = matrix_id;
+  if (!matrixId && element_id) {
+    const found = await findElement(apiFor(authContext), element_id);
+    if (!found) return { error: `Element "${element_id}" not found in any matrix` };
+    matrixId = found.matrixId;
+  }
+  matrixId = await resolveMatrixId(matrixId, headers);
+  if (!matrixId) return { error: 'No matrix found. Create one first with create_matrix.' };
+
+  const body = elementBody(args);
 
   const created = !element_id;
   const result = await callAPI(
@@ -565,8 +616,12 @@ async function handleSetCorrelation(args, authContext) {
     'X-Organization-Id': authContext.organizationId
   };
 
-  const matrixId = await resolveMatrixId(matrix_id, headers);
-  if (!matrixId) return { error: 'No matrix found. Create one first with create_matrix.' };
+  let matrixId = matrix_id;
+  if (!matrixId) {
+    const found = await findElement(apiFor(authContext), from_element_id);
+    if (!found) return { error: `Element "${from_element_id}" not found in any matrix` };
+    matrixId = found.matrixId;
+  }
 
   const result = await callAPI(`/api/matrices/${matrixId}/correlations`, {
     method: 'PUT',
@@ -589,82 +644,14 @@ async function handleSetCorrelation(args, authContext) {
 }
 
 async function handleUpdateElementStatus(args, authContext) {
-  const { element_id, status, progress, notes, external_ref } = args;
+  const { element_id, status, progress, current_value, notes, external_ref, period } = args;
 
-  if (!element_id) {
-    return { error: 'element_id is required' };
-  }
-
-  if (!status && progress === undefined && !notes && external_ref === undefined) {
-    return { error: 'At least one of status, progress, notes, or external_ref must be provided' };
-  }
-
-  const headers = {
-    'Authorization': `Bearer ${authContext.token}`,
-    'X-Organization-Id': authContext.organizationId
-  };
-
-  // Find the element's matrix by fetching all matrices with elements
-  const matricesResult = await callAPI('/api/exports/matrices?include=elements', { headers });
-  const matrices = Array.isArray(matricesResult.data) ? matricesResult.data : [matricesResult.data];
-
-  let matrixId = null;
-  let currentElement = null;
-
-  for (const matrix of matrices) {
-    if (!matrix.elements) continue;
-    for (const quadrant of ['north', 'east', 'south', 'west']) {
-      const elements = matrix.elements[quadrant] || [];
-      const found = elements.find(el => el.id === element_id);
-      if (found) {
-        matrixId = matrix.id;
-        currentElement = found;
-        break;
-      }
-    }
-    if (matrixId) break;
-  }
-
-  if (!matrixId || !currentElement) {
-    return { error: `Element with id "${element_id}" not found in any matrix` };
-  }
-
-  // Build the update body
-  const updateBody = {};
-  if (status) {
-    updateBody.status = status;
-  }
-  if (external_ref !== undefined) {
-    updateBody.externalRef = external_ref || null;
-  }
-  if (progress !== undefined) {
-    updateBody.currentValue = String(progress);
-  }
-  if (notes) {
-    // Append notes to existing description
-    const existingDesc = currentElement.description || '';
-    const timestamp = new Date().toISOString().split('T')[0];
-    const separator = existingDesc ? '\n\n' : '';
-    updateBody.description = `${existingDesc}${separator}[${timestamp}] ${notes}`;
-  }
-
-  const updatedElement = await callAPI(`/api/matrices/${matrixId}/elements/${element_id}`, {
-    method: 'PUT',
-    headers,
-    body: JSON.stringify(updateBody)
+  // Shared through lib/remote-tools.js: a KPI value is a reading for a period, progress
+  // and notes go to the element's update log (lib/remote-tools.js).
+  const result = await updateElementStatus(apiFor(authContext), {
+    element_id, status, progress, current_value, notes, external_ref, period
   });
-
-  return {
-    success: true,
-    message: `Element "${currentElement.title}" updated successfully`,
-    element: updatedElement,
-    changes: {
-      ...(status ? { status: { from: currentElement.status, to: status } } : {}),
-      ...(progress !== undefined ? { progress } : {}),
-      ...(notes ? { notesAdded: notes } : {})
-    },
-    organization: authContext.organizationName
-  };
+  return result.error ? result : { ...result, organization: authContext.organizationName };
 }
 
 async function handleSearchIdeas(args, authContext) {
@@ -673,8 +660,11 @@ async function handleSearchIdeas(args, authContext) {
   // Build query params
   const params = new URLSearchParams();
   if (status !== 'all') params.append('status', status);
+  if (priority !== 'all') params.append('priority', priority);
   if (query) params.append('search', query);
-  params.append('limit', limit.toString());
+  // Tags are filtered here, after the fetch: take the API maximum so the
+  // filter does not run on a truncated page.
+  params.append('limit', tags.length > 0 ? '200' : limit.toString());
 
   const result = await callAPI(`/api/ideas?${params.toString()}`, {
     headers: {
@@ -685,10 +675,6 @@ async function handleSearchIdeas(args, authContext) {
 
   let ideas = result.ideas || [];
 
-  // Additional client-side filtering
-  if (priority !== 'all') {
-    ideas = ideas.filter(i => i.priority === priority);
-  }
   if (tags.length > 0) {
     ideas = ideas.filter(i => i.tags?.some(t => tags.includes(t)));
   }
@@ -736,365 +722,45 @@ async function handleGetMatrixCompleteness(args, authContext) {
   };
 }
 
+// Cadences and themes: one implementation in lib/remote-tools.js, shared with the stdio transport.
 async function handleGetManagementArchitecture(args, authContext) {
-  const headers = {
-    'Authorization': `Bearer ${authContext.token}`,
-    'X-Organization-Id': authContext.organizationId
-  };
-
-  const architecture = await callAPI('/api/cadences/architecture', { headers });
-
-  return {
-    ...architecture,
-    organization: authContext.organizationName
-  };
+  return { ...(await managementArchitecture(apiFor(authContext))), organization: authContext.organizationName };
 }
 
 async function handleDiagnoseThemeDeployment(args, authContext) {
-  const { theme_id, theme_name } = args;
-
-  const headers = {
-    'Authorization': `Bearer ${authContext.token}`,
-    'X-Organization-Id': authContext.organizationId
-  };
-
-  // 1. Get all themes
-  const themesResult = await callAPI('/api/themes', { headers });
-  const themes = themesResult.themes || [];
-
-  // Find the target theme
-  let theme = null;
-  if (theme_id) {
-    theme = themes.find(t => t.id === theme_id);
-  } else if (theme_name) {
-    const nameLower = theme_name.toLowerCase();
-    theme = themes.find(t => t.name.toLowerCase().includes(nameLower));
-  }
-
-  if (!theme) {
-    return {
-      error: theme_id
-        ? `Theme with id "${theme_id}" not found`
-        : theme_name
-          ? `No theme matching "${theme_name}" found`
-          : 'Either theme_id or theme_name is required',
-      availableThemes: themes.map(t => ({ id: t.id, name: t.name })),
-      organization: authContext.organizationName
-    };
-  }
-
-  // 2. Get full theme details (with element info)
-  const themeDetail = await callAPI(`/api/themes/${theme.id}`, { headers });
-
-  // 3. Get cadences architecture
-  const architecture = await callAPI('/api/cadences/architecture', { headers });
-  const cadencesByLevel = architecture.byLevel || {};
-
-  // 4. Analyze X-Matrix presence
-  const deployment = {
-    north: { present: (themeDetail.elements?.north?.length || 0) > 0, elements: themeDetail.elements?.north?.length || 0 },
-    east: { present: (themeDetail.elements?.east?.length || 0) > 0, elements: themeDetail.elements?.east?.length || 0 },
-    south: { present: (themeDetail.elements?.south?.length || 0) > 0, elements: themeDetail.elements?.south?.length || 0 },
-    west: { present: (themeDetail.elements?.west?.length || 0) > 0, elements: themeDetail.elements?.west?.length || 0 }
-  };
-
-  // Count quadrants present
-  const quadrantsPresent = Object.values(deployment).filter(d => d.present).length;
-
-  // 5. Analyze operational coverage per level
-  const themeElementIds = [
-    ...(themeDetail.northElements || []),
-    ...(themeDetail.eastElements || []),
-    ...(themeDetail.southElements || []),
-    ...(themeDetail.westElements || [])
-  ];
-
-  const levelOrder = ['strategic', 'tactical', 'operational_mgmt', 'team_mgmt', 'execution'];
-  const levelLabels = {
-    strategic: 'Strategic (Annual/Multi-year)',
-    tactical: 'Tactical (Quarterly)',
-    operational_mgmt: 'Operational Management (Monthly)',
-    team_mgmt: 'Team Management (Weekly)',
-    execution: 'Operational Execution (Daily)'
-  };
-
-  const operationalCoverage = [];
-  let coveredLevels = 0;
-
-  for (const level of levelOrder) {
-    const cadences = cadencesByLevel[level] || [];
-    if (cadences.length === 0) {
-      operationalCoverage.push({
-        level,
-        levelLabel: levelLabels[level],
-        coverage: 0,
-        meetings: [],
-        status: 'missing',
-        message: `No cadences defined at ${levelLabels[level]} level`
-      });
-      continue;
-    }
-
-    // Check if any cadence at this level tracks elements from this theme
-    const meetingCoverage = cadences.map(c => {
-      const trackedQuadrants = c.trackedQuadrants || [];
-      const primaryQuadrant = c.primaryQuadrant;
-      const allQuadrants = primaryQuadrant ? [primaryQuadrant, ...trackedQuadrants] : trackedQuadrants;
-      const uniqueQuadrants = [...new Set(allQuadrants)];
-
-      // A cadence covers this theme if it tracks quadrants where the theme has elements
-      const relevantQuadrants = uniqueQuadrants.filter(q => deployment[q]?.present);
-      const coverageRatio = uniqueQuadrants.length > 0
-        ? relevantQuadrants.length / Object.values(deployment).filter(d => d.present).length
-        : 0;
-
-      return {
-        name: c.name,
-        frequency: c.frequency,
-        teamScope: c.teamScope,
-        trackedQuadrants: uniqueQuadrants,
-        relevantQuadrants,
-        coverageRatio
-      };
-    });
-
-    const bestCoverage = Math.max(...meetingCoverage.map(m => m.coverageRatio), 0);
-    let status = 'critical';
-    if (bestCoverage >= 0.75) { status = 'ok'; coveredLevels++; }
-    else if (bestCoverage >= 0.25) { status = 'warning'; coveredLevels += 0.5; }
-
-    operationalCoverage.push({
-      level,
-      levelLabel: levelLabels[level],
-      coverage: Math.round(bestCoverage * 100) / 100,
-      meetings: meetingCoverage,
-      status
-    });
-  }
-
-  // 6. Calculate deployment score
-  const matrixPresenceScore = (quadrantsPresent / 4) * 40; // 40% weight
-  const operationalScore = (coveredLevels / levelOrder.length) * 60; // 60% weight
-  const score = Math.round(matrixPresenceScore + operationalScore);
-
-  // 7. Generate suggestions
-  const suggestions = [];
-  for (const quadrant of ['north', 'east', 'south', 'west']) {
-    if (!deployment[quadrant].present) {
-      const quadrantLabels = { north: 'Vision (North)', east: 'Annual Objectives (East)', south: 'Initiatives (South)', west: 'KPIs (West)' };
-      suggestions.push(`Add ${quadrantLabels[quadrant]} elements for theme "${themeDetail.name}"`);
-    }
-  }
-  for (const oc of operationalCoverage) {
-    if (oc.status === 'critical') {
-      suggestions.push(`No meetings at ${oc.levelLabel} level cover theme "${themeDetail.name}" - consider creating one or linking existing cadences`);
-    } else if (oc.status === 'warning') {
-      suggestions.push(`Partial coverage at ${oc.levelLabel} level - review tracked quadrants in meetings`);
-    }
-  }
-
-  return {
-    theme: themeDetail.name,
-    themeId: themeDetail.id,
-    score,
-    deployment,
-    operationalCoverage,
-    suggestions,
-    aiContext: `Theme "${themeDetail.name}" deployment score ${score}/100. Present in ${quadrantsPresent}/4 quadrants. ${coveredLevels}/${levelOrder.length} hierarchy levels have adequate coverage.`,
-    organization: authContext.organizationName
-  };
+  return { ...(await diagnoseThemeDeployment(apiFor(authContext), args)), organization: authContext.organizationName };
 }
 
 async function handleSuggestMeetingForTopic(args, authContext) {
-  const { topic, element_id } = args;
+  const result = await suggestMeetingForTopic(apiFor(authContext), args);
+  return result.error ? result : { ...result, organization: authContext.organizationName };
+}
 
-  if (!topic || topic.trim().length === 0) {
-    return { error: 'topic is required' };
-  }
+async function handleGetAgenda(args, authContext) {
+  return { ...(await getAgenda(apiFor(authContext), args)), organization: authContext.organizationName };
+}
 
-  const headers = {
-    'Authorization': `Bearer ${authContext.token}`,
-    'X-Organization-Id': authContext.organizationId
-  };
+async function handleScheduleReview(args, authContext) {
+  return scheduleReview(apiFor(authContext), args);
+}
 
-  // Determine quadrant from element if provided
-  let elementQuadrant = null;
-  let elementInfo = null;
+async function handleRecordReview(args, authContext) {
+  return recordReview(apiFor(authContext), args);
+}
 
-  if (element_id) {
-    const matricesResult = await callAPI('/api/exports/matrices?include=elements', { headers });
-    const matrices = Array.isArray(matricesResult.data) ? matricesResult.data : [matricesResult.data];
+async function handleWhoami(authContext) {
+  return whoami(apiFor(authContext));
+}
 
-    for (const matrix of matrices) {
-      if (!matrix.elements) continue;
-      for (const quadrant of ['north', 'east', 'south', 'west']) {
-        const elements = matrix.elements[quadrant] || [];
-        const found = elements.find(el => el.id === element_id);
-        if (found) {
-          elementQuadrant = quadrant;
-          elementInfo = { id: found.id, title: found.title, quadrant };
-          break;
-        }
-      }
-      if (elementQuadrant) break;
-    }
-  }
-
-  // Get cadences
-  const architecture = await callAPI('/api/cadences/architecture', { headers });
-  const cadencesByLevel = architecture.byLevel || {};
-
-  // Recommendation logic based on quadrant
-  const quadrantToLevel = {
-    north: {
-      recommended: ['strategic'],
-      acceptable: ['tactical'],
-      notRecommended: ['operational_mgmt', 'team_mgmt', 'execution'],
-      reason: 'Vision/strategic objectives (North quadrant, 3-5 year horizon) should be discussed at strategic level meetings (annual reviews, strategic planning)'
-    },
-    east: {
-      recommended: ['tactical', 'operational_mgmt'],
-      acceptable: ['strategic'],
-      notRecommended: ['team_mgmt', 'execution'],
-      reason: 'Annual objectives (East quadrant) should be reviewed at tactical level (QBR) or monthly operations reviews'
-    },
-    south: {
-      recommended: ['tactical', 'operational_mgmt'],
-      acceptable: ['team_mgmt'],
-      notRecommended: ['strategic', 'execution'],
-      reason: 'Initiatives and projects (South quadrant) should be tracked at QBR (quarterly) or monthly reviews, with weekly check-ins as needed'
-    },
-    west: {
-      recommended: ['operational_mgmt', 'team_mgmt'],
-      acceptable: ['execution'],
-      notRecommended: ['strategic', 'tactical'],
-      reason: 'KPIs and metrics (West quadrant) should be tracked at monthly reviews and weekly team meetings, with derived KPIs in daily stand-ups'
-    }
-  };
-
-  const levelLabels = {
-    strategic: 'Strategic (Annual/Multi-year)',
-    tactical: 'Tactical (Quarterly/QBR)',
-    operational_mgmt: 'Operational Management (Monthly)',
-    team_mgmt: 'Team Management (Weekly)',
-    execution: 'Operational Execution (Daily)'
-  };
-
-  const mapping = elementQuadrant
-    ? quadrantToLevel[elementQuadrant]
-    : null;
-
-  // Build recommendations
-  const recommended = [];
-  const notRecommended = [];
-
-  if (mapping) {
-    // Build recommended list with matching cadences
-    for (const level of mapping.recommended) {
-      const cadences = cadencesByLevel[level] || [];
-      recommended.push({
-        level,
-        levelLabel: levelLabels[level],
-        priority: 'recommended',
-        cadences: cadences.map(c => ({ id: c.id, name: c.name, frequency: c.frequency, teamScope: c.teamScope })),
-        reason: mapping.reason
-      });
-    }
-
-    for (const level of mapping.acceptable) {
-      const cadences = cadencesByLevel[level] || [];
-      recommended.push({
-        level,
-        levelLabel: levelLabels[level],
-        priority: 'acceptable',
-        cadences: cadences.map(c => ({ id: c.id, name: c.name, frequency: c.frequency, teamScope: c.teamScope })),
-        reason: `Acceptable if the topic requires attention at this level`
-      });
-    }
-
-    for (const level of mapping.notRecommended) {
-      notRecommended.push({
-        level,
-        levelLabel: levelLabels[level],
-        reason: level === 'execution' || level === 'team_mgmt'
-          ? 'Too operational - this topic has a longer time horizon than daily/weekly discussions'
-          : 'Too high-level - this topic is more operational and does not require strategic-level discussion'
-      });
-    }
-  } else {
-    // No element provided - recommend based on topic keywords (heuristic)
-    const topicLower = topic.toLowerCase();
-
-    let detectedLevel = 'operational_mgmt'; // default
-    let detectedReason = 'General topic - defaulting to monthly review level';
-
-    if (topicLower.match(/vision|strat[ée]gi|long.?term|3.?5\s*ans|pluriannuel/)) {
-      detectedLevel = 'strategic';
-      detectedReason = 'Topic mentions strategic/vision/long-term concepts';
-    } else if (topicLower.match(/trimestr|quarter|qbr|initiative|projet|program/)) {
-      detectedLevel = 'tactical';
-      detectedReason = 'Topic mentions quarterly/initiative/project concepts';
-    } else if (topicLower.match(/mensuel|monthly|kpi|indicat|m[ée]trique|review/)) {
-      detectedLevel = 'operational_mgmt';
-      detectedReason = 'Topic mentions monthly/KPI/metrics concepts';
-    } else if (topicLower.match(/hebdo|weekly|[ée]quipe|team|sprint/)) {
-      detectedLevel = 'team_mgmt';
-      detectedReason = 'Topic mentions weekly/team/sprint concepts';
-    } else if (topicLower.match(/daily|quotidien|standup|stand.?up|jour/)) {
-      detectedLevel = 'execution';
-      detectedReason = 'Topic mentions daily/stand-up concepts';
-    }
-
-    const allLevels = ['strategic', 'tactical', 'operational_mgmt', 'team_mgmt', 'execution'];
-    const levelIndex = allLevels.indexOf(detectedLevel);
-
-    for (let i = 0; i < allLevels.length; i++) {
-      const level = allLevels[i];
-      const cadences = cadencesByLevel[level] || [];
-      const distance = Math.abs(i - levelIndex);
-
-      if (distance === 0) {
-        recommended.push({
-          level,
-          levelLabel: levelLabels[level],
-          priority: 'recommended',
-          cadences: cadences.map(c => ({ id: c.id, name: c.name, frequency: c.frequency, teamScope: c.teamScope })),
-          reason: detectedReason
-        });
-      } else if (distance === 1) {
-        recommended.push({
-          level,
-          levelLabel: levelLabels[level],
-          priority: 'acceptable',
-          cadences: cadences.map(c => ({ id: c.id, name: c.name, frequency: c.frequency, teamScope: c.teamScope })),
-          reason: 'Adjacent level - acceptable if context requires'
-        });
-      } else {
-        notRecommended.push({
-          level,
-          levelLabel: levelLabels[level],
-          reason: i < levelIndex
-            ? 'Too high-level for this topic'
-            : 'Too operational for this topic'
-        });
-      }
-    }
-  }
-
-  return {
-    topic,
-    element: elementInfo,
-    recommended,
-    notRecommended,
-    organization: authContext.organizationName
-  };
+async function handleReportMissingCapability(args, authContext) {
+  return reportMissingCapability(apiFor(authContext), args);
 }
 
 // ============================================
 // MCP SERVER FACTORY
 // ============================================
 
-function createServer(authContext) {
+function createServer(authContext, era = 'legacy') {
   const server = new Server(
     {
       name: 'hoshin-kanri-mcp',
@@ -1103,19 +769,20 @@ function createServer(authContext) {
     {
       capabilities: {
         tools: {},
-        resources: {},
+        resources: { subscribe: true },
         prompts: {}
-      }
+      },
+      instructions: SERVER_INSTRUCTIONS
     }
   );
 
   // List tools
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  server.setRequestHandler('tools/list', async () => ({
     tools
   }));
 
   // Handle tool calls
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler('tools/call', async (request) => {
     const { name, arguments: args } = request.params;
 
     try {
@@ -1124,6 +791,12 @@ function createServer(authContext) {
       switch (name) {
         case 'add_idea':
           result = await handleAddIdea(args || {}, authContext);
+          break;
+        case 'update_idea':
+          result = await handleUpdateIdea(args || {}, authContext);
+          break;
+        case 'list_matrices':
+          result = await handleListMatrices(args || {}, authContext);
           break;
         case 'list_objectives':
           result = await handleListObjectives(args || {}, authContext);
@@ -1170,18 +843,61 @@ function createServer(authContext) {
         case 'suggest_meeting_for_topic':
           result = await handleSuggestMeetingForTopic(args || {}, authContext);
           break;
+        case 'get_agenda':
+          result = await handleGetAgenda(args || {}, authContext);
+          break;
+        case 'schedule_review':
+          result = await handleScheduleReview(args || {}, authContext);
+          break;
+        case 'record_review':
+          result = await handleRecordReview(args || {}, authContext);
+          break;
+        case 'whoami':
+          result = await handleWhoami(authContext);
+          break;
+        case 'get_help':
+          result = getHelp(args || {});
+          break;
+        case 'report_missing_capability':
+          result = await handleReportMissingCapability(args || {}, authContext);
+          break;
+        case 'archive_matrix':
+          result = await withOrg(archiveMatrix(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'delete_matrix':
+          result = await withOrg(deleteMatrix(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'delete_element':
+          result = await withOrg(deleteElement(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'export_matrix_image':
+          result = await withOrg(exportMatrixImage(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'get_review':
+          result = await withOrg(getReview(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'upsert_initiative_sheet':
+          result = await withOrg(upsertInitiativeSheet(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'set_kpi_definition':
+          result = await withOrg(setKpiDefinition(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'upsert_cadence':
+          result = await withOrg(upsertCadence(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'list_members':
+          result = await withOrg(listMembers(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'show_matrix':
+          result = await showMatrix(apiFor(authContext), args || {});
+          break;
         default:
           result = { error: `Unknown tool: ${name}` };
       }
 
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(result, null, 2)
-          }
-        ]
-      };
+      // A tool that answers { error } failed: isError says so, so the client and the model
+      // do not take it as a result. show_matrix also carries structuredContent for its view.
+      return toolResult(result);
     } catch (error) {
       return {
         content: [
@@ -1195,17 +911,17 @@ function createServer(authContext) {
     }
   });
 
-  // List resources (empty for now)
-  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: []
-  }));
+  // hoshin://agenda, re-read with the session's current token (refreshed by each POST).
+  // 2025: a session's resources/subscribe starts the watch. 2026: one server per request,
+  // the per-org handler (lib/org-handlers.js) watches while a listen stream is open.
+  registerAgendaResource(server, () => getAgenda(apiFor(authContext)), { watch: era === 'modern' ? 'none' : 'subscribe' });
 
   // List prompts
-  server.setRequestHandler(ListPromptsRequestSchema, async () => ({ prompts: promptsList }));
+  server.setRequestHandler('prompts/list', async () => ({ prompts: promptsList }));
 
   // Prompt content is shared across all transports in lib/prompt-definitions.js
-  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-    return getPromptMessages(request.params.name);
+  server.setRequestHandler('prompts/get', async (request) => {
+    return getPromptMessages(request.params.name, request.params.arguments || {});
   });
 
   return server;
@@ -1254,7 +970,8 @@ async function authenticate(req, res) {
     return null;
   }
 
-  const opensSession = req.method === 'POST' && !req.headers['mcp-session-id'] && isInitializeRequest(req.body);
+  // A session opening, for the API's count: initialize in 2025, server/discover in 2026.
+  const opensSession = req.method === 'POST' && !req.headers['mcp-session-id'] && (isInitializeRequest(req.body) || req.body?.method === 'server/discover');
   const authInfo = await validateToken(token, opensSession);
   if (!authInfo) {
     res.status(401).set('WWW-Authenticate', WWW_AUTHENTICATE).json({
@@ -1290,11 +1007,89 @@ async function makeRoomFor(principal) {
   return transports.size < MAX_SESSIONS_TOTAL;
 }
 
+// ============================================
+// 2026-07-28 (docs/sprint-mcp-2026-07-28.md, lot 2)
+// ============================================
+
+// MCP_MODERN=off sends every request down the 2025 path, without a code change.
+const MODERN = process.env.MCP_MODERN !== 'off';
+
+const orgHandlers = createOrgHandlers({
+  createHandler: (bus) =>
+    createMcpHandler((ctx) => createServer(authContextOf(ctx.authInfo), ctx.era), {
+      legacy: 'reject',
+      bus,
+      maxRequestBodySize: MAX_BODY_BYTES,
+      onerror: (error) => console.error('MCP 2026 error:', error.message)
+    }),
+  readAgenda: (token, organizationId) => getAgenda(apiFor({ token, organizationId })),
+  pollMs: Number(process.env.MCP_AGENDA_POLL_MS || 15 * 60 * 1000)
+});
+const nodeAdapters = new WeakMap();
+const listenLimits = createListenLimits({
+  perPrincipal: Number(process.env.MCP_MAX_LISTEN_PER_PRINCIPAL || 10),
+  total: Number(process.env.MCP_MAX_LISTEN_TOTAL || 500)
+});
+
+function authContextOf(authInfo) {
+  return {
+    token: authInfo?.token,
+    organizationId: authInfo?.extra?.organizationId,
+    organizationName: authInfo?.extra?.organizationName
+  };
+}
+
+/** A web Request carrying the Express request's method and headers, for isLegacyRequest (the body is passed parsed). */
+function webRequestOf(req) {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value !== undefined) headers.set(name, Array.isArray(value) ? value.join(', ') : String(value));
+  }
+  return new Request(`http://localhost${req.originalUrl}`, { method: req.method, headers });
+}
+
+async function serveModern(req, res, authInfo) {
+  // The SDK verifies no token: it receives the one we validated, as pass-through authInfo.
+  req.auth = {
+    token: authInfo.token,
+    clientId: principalOf(authInfo),
+    scopes: [],
+    extra: { organizationId: authInfo.organizationId, organizationName: authInfo.organizationName }
+  };
+  // A listen stream stays open: counted per principal and in total, released when it closes.
+  if (req.body?.method === 'subscriptions/listen') {
+    const release = listenLimits.acquire(principalOf(authInfo));
+    if (!release) {
+      return res.status(429).json({
+        jsonrpc: '2.0',
+        id: req.body.id ?? null,
+        error: { code: -32000, message: 'Too many open listen streams: close one before opening another.' }
+      });
+    }
+    res.on('close', release);
+  }
+  const handler = orgHandlers.handlerFor(authInfo.organizationId, authInfo.token);
+  let node = nodeAdapters.get(handler);
+  if (!node) {
+    node = toNodeHandler(handler, {
+      maxRequestBodySize: MAX_BODY_BYTES,
+      onerror: (error) => console.error('MCP 2026 adapter error:', error.message)
+    });
+    nodeAdapters.set(handler, node);
+  }
+  await node(req, res, req.body);
+}
+
 // Main MCP endpoint - POST for requests, GET for SSE stream
 app.post('/mcp', async (req, res) => {
   try {
     const authInfo = await authenticate(req, res);
     if (!authInfo) return;
+
+    // 2026-07-28: no session, each request carries its revision in _meta.
+    if (MODERN && !req.headers['mcp-session-id'] && !(await isLegacyRequest(webRequestOf(req), req.body, { maxRequestBodySize: MAX_BODY_BYTES }))) {
+      return await serveModern(req, res, authInfo);
+    }
 
     let sessionId;
     let session;
@@ -1325,7 +1120,7 @@ app.post('/mcp', async (req, res) => {
         organizationName: authInfo.organizationName
       };
       const server = createServer(authContext);
-      const transport = new StreamableHTTPServerTransport({
+      const transport = new NodeStreamableHTTPServerTransport({
         sessionIdGenerator: () => sessionId
       });
 
