@@ -2,18 +2,23 @@
 
 ## Reporting a vulnerability
 
-Email <contact@animam-technologies.com> with `SECURITY` in the subject. Please
-do not open a public issue for anything exploitable.
+Email <security@hoshin.app>. Please do not open a public issue for anything
+exploitable. The same address is published in
+<https://hoshin.app/.well-known/security.txt> (RFC 9116).
+
+Mail to this address is read by a person. Unlike our other inboxes, it is never
+handed to the assistant that drafts replies, so the details of a report do not
+leave us.
 
 Include what you need to make the report actionable: the affected transport
-(local, stdio, Streamable HTTP) or the hosted endpoint, what you observed, and
+(local JSON over stdio, or Streamable HTTP) or the hosted endpoint, what you observed, and
 how to reproduce it. We will acknowledge within a few working days.
 
 ## Scope
 
 In scope:
 
-- this repository — the three MCP transports and the shared `lib/`;
+- this repository — the two MCP transports and the shared `lib/`;
 - the hosted MCP endpoint `https://hoshin.app/mcp` and the OAuth 2.1
   authorization server it discovers
   (`/.well-known/oauth-authorization-server`, `/.well-known/jwks.json`,
