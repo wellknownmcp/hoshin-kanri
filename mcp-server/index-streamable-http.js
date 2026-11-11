@@ -23,6 +23,7 @@ import { getHelp, SERVER_INSTRUCTIONS } from './lib/help.js';
 import { allowedOrigins, originAllowed } from './lib/origin.js';
 import { createOrgHandlers } from './lib/org-handlers.js';
 import { createListenLimits } from './lib/listen-limits.js';
+import { sessionsToEvict } from './lib/session-room.js';
 
 // Load environment variables
 dotenv.config({ path: '../.env' });
@@ -56,6 +57,16 @@ const SESSION_SWEEP_MS = Number(process.env.MCP_SESSION_SWEEP_MS || 5 * 60 * 100
 // 404 on its session re-initializes (MCP spec).
 const MAX_SESSIONS_PER_PRINCIPAL = Number(process.env.MCP_MAX_SESSIONS_PER_PRINCIPAL || 50);
 const MAX_SESSIONS_TOTAL = Number(process.env.MCP_MAX_SESSIONS_TOTAL || 2000);
+// Credentials are free to create for an admin, so a cap per credential bounds
+// nothing alone: an organization has its own, and a full map makes room at the
+// expense of whoever holds the most (lib/session-room.js; audit run-2, 9).
+const MAX_SESSIONS_PER_ORG = Number(process.env.MCP_MAX_SESSIONS_PER_ORG || 200);
+// A stream held open keeps its session past the idle sweep (an agent waiting
+// for the agenda sits quiet for a night), but not on trust for ever: with no
+// authenticated request for this long, the credential the session last used is
+// validated again, and the session is closed if it is refused (revoked token,
+// expired access token). The client then re-initializes with what it holds.
+const SESSION_STREAM_IDLE_MS = Number(process.env.MCP_SESSION_STREAM_IDLE_MS || 12 * 60 * 60 * 1000);
 
 /**
  * Stable identity of the caller behind a validated credential. An OAuth access
@@ -83,9 +94,18 @@ async function closeSession(sessionId, session, reason) {
 
 async function sweepIdleSessions(now = Date.now()) {
   const expired = [];
+  const quietStreams = [];
   for (const [sessionId, session] of transports) {
-    if (session.activeStreams > 0) continue;
-    if (now - session.lastSeen > SESSION_IDLE_MS) expired.push([sessionId, session]);
+    if (session.activeStreams > 0) {
+      if (now - session.lastSeen > SESSION_STREAM_IDLE_MS) quietStreams.push([sessionId, session]);
+    } else if (now - session.lastSeen > SESSION_IDLE_MS) {
+      expired.push([sessionId, session]);
+    }
+  }
+
+  for (const [sessionId, session] of quietStreams) {
+    if (await validateToken(session.authContext.token)) session.lastSeen = Date.now();
+    else expired.push([sessionId, session]);
   }
 
   for (const [sessionId, session] of expired) {
@@ -999,13 +1019,27 @@ function sessionFor(req, res, authInfo) {
   return { sessionId, session };
 }
 
-async function makeRoomFor(principal) {
-  const own = [...transports].filter(([, s]) => s.principal === principal).sort((a, b) => a[1].lastSeen - b[1].lastSeen);
-  for (const [id, s] of own.slice(0, Math.max(0, own.length - MAX_SESSIONS_PER_PRINCIPAL + 1))) {
-    await closeSession(id, s, 'per-principal cap');
+// Synchronous on purpose: the evicted sessions leave the map here, and the
+// caller takes the freed seat before anything is awaited. Closing them first
+// let a concurrent initialize take the seat, and the one that had made room
+// was answered 503. The caller closes `closing` once its own session is in.
+function makeRoomFor(principal, organizationId) {
+  const closing = [];
+  const gone = sessionsToEvict(transports, { principal, organizationId }, {
+    perPrincipal: MAX_SESSIONS_PER_PRINCIPAL,
+    perOrg: MAX_SESSIONS_PER_ORG,
+    total: MAX_SESSIONS_TOTAL
+  });
+  for (const id of gone) {
+    const session = transports.get(id);
+    if (!session) continue;
+    transports.delete(id);
+    closing.push([id, session]);
   }
-  return transports.size < MAX_SESSIONS_TOTAL;
+  return { ok: transports.size < MAX_SESSIONS_TOTAL, closing };
 }
+
+const closeEvicted = (closing) => Promise.all(closing.map(([id, session]) => closeSession(id, session, 'session caps')));
 
 // ============================================
 // 2026-07-28 (docs/sprint-mcp-2026-07-28.md, lot 2)
@@ -1109,7 +1143,9 @@ app.post('/mcp', async (req, res) => {
         return res.status(400).json({ error: 'BAD_REQUEST', message: 'Missing Mcp-Session-Id: send an initialize request first.' });
       }
       const principal = principalOf(authInfo);
-      if (!(await makeRoomFor(principal))) {
+      const room = makeRoomFor(principal, authInfo.organizationId);
+      if (!room.ok) {
+        await closeEvicted(room.closing);
         return res.status(503).json({ error: 'TOO_MANY_SESSIONS', message: 'Server at session capacity, retry later.' });
       }
 
@@ -1137,6 +1173,7 @@ app.post('/mcp', async (req, res) => {
         activeStreams: 0
       };
       transports.set(sessionId, session);
+      await closeEvicted(room.closing);
 
       // Connect server to transport
       await server.connect(transport);

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Security (hosted HTTP transport only; the package is unchanged)
+
+- Sessions are capped per organization (`MCP_MAX_SESSIONS_PER_ORG`, 200), whatever number of credentials it holds.
+  When the session map is full, the organization holding the most sessions gives up its least recently used one,
+  so a newcomer is always admitted (`lib/session-room.js`).
+- A session kept alive by an open stream has its credential validated again after 12 hours without a request
+  (`MCP_SESSION_STREAM_IDLE_MS`), and is closed if it is refused.
+
 ## 4.5.0 — 2026-11-08 (since 3.1.0)
 
 ### Breaking (4.0.0)
