@@ -11,7 +11,17 @@ export const AGENDA_KINDS = [
     'kpi_reading_missing',
     'initiative_stale',
     'action_overdue',
+    'roadmap_assessment_due',
+    'roadmap_item_unlinked',
+    'roadmap_link_closed',
+    'roadmap_score_unproven',
 ];
+const ROADMAP_KIND = {
+    assessment_due: 'roadmap_assessment_due',
+    item_below_target_unlinked: 'roadmap_item_unlinked',
+    item_link_closed: 'roadmap_link_closed',
+    score_without_evidence: 'roadmap_score_unproven',
+};
 const DAY = 86_400_000;
 const NOTES_MAX = 500;
 const ymd = (d) => d.toISOString().slice(0, 10);
@@ -225,6 +235,20 @@ export function computeAgenda(input, opts) {
             summary: `Action "${a.title}" was due on ${a.dueDate}.`,
             date: a.dueDate,
             elementId: a.elementId,
+        });
+    }
+    // Excellence roadmap: a site due for an assessment, an item under its target
+    // with no initiative or a closed one, a score with no evidence.
+    for (const f of input.roadmap ?? []) {
+        items.push({
+            ...base,
+            key: `roadmap:${f.key}`,
+            kind: ROADMAP_KIND[f.kind],
+            dueSince: iso(atDay(f.since)),
+            subject: f.subject,
+            summary: f.summary,
+            date: f.since,
+            matrixId: f.matrixId,
         });
     }
     items.sort((x, y) => AGENDA_KINDS.indexOf(x.kind) - AGENDA_KINDS.indexOf(y.kind) || (x.date ?? '').localeCompare(y.date ?? '') || x.key.localeCompare(y.key));

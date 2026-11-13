@@ -20,8 +20,8 @@ Hoshin decides what may leave the organization; you never decide it alone.
    - `layout: "initiatives"` gives one 16:9 page per initiative sheet.
 4. A live page: `share_matrix` creates a revocable read-only link. `hide_figures: true` leaves out every
    value. `full_sheets: true` shows names, blockers and the sentence behind each health on the initiative
-   pages: only when the person asks, for an audience they trust. The link is shown once; `share_matrix`
-   with `action: "revoke"` ends it.
+   pages: only when the person asks, for an audience they trust. The link is shown once; `list_matrix_shares`
+   lists the links of a matrix and `revoke_matrix_share` ends one.
 5. Each initiative has a page (`pageUrl` in `get_matrix_data`, internal readings only): cite it as the
    reference version in what you build for the team.
 

@@ -7,7 +7,7 @@ completeness score, and the prompts that guide your AI agent through the
 discipline: weekly execution sync, boardroom artifacts, deployment
 diagnosis. Hoshin computes; the agent reasons; people decide.
 
-**34 tools · 9 guided prompts · 2 modes: sovereign local (this package) or hosted (`https://hoshin.app/mcp`). MCP revisions 2026-07-28 and 2025-11-25.**
+**42 tools · 9 guided prompts · 2 modes: sovereign local (this package) or hosted (`https://hoshin.app/mcp`). MCP revisions 2026-07-28 and 2025-11-25.**
 
 ## Quick start — sovereign local mode (nothing leaves your machine)
 
@@ -97,7 +97,8 @@ text of the prompts for clients that do not show them, rights, error codes, loca
 `report_missing_capability` (tell us what you needed; in local mode nothing is
 sent, you get the text to file as an issue).
 
-**Publish:** `share_matrix` (a revocable read-only public link — remote mode
+**Publish:** `share_matrix` (a revocable read-only public link; `list_matrix_shares`
+and `revoke_matrix_share` list and end them — remote mode
 only, by design: in local mode your data has no cloud to leak to; elements marked
 `visibility: "internal"` never appear, and `hide_figures` leaves out every value) ·
 `export_matrix_image` (the X-Matrix as an SVG for a deck, vision at the bottom by

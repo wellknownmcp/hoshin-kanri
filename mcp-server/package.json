@@ -1,7 +1,7 @@
 {
   "name": "hoshin-kanri-mcp",
-  "version": "4.5.0",
-  "description": "Hoshin Kanri X-Matrix MCP server — sovereign local JSON mode (data never leaves your machine) or the hosted server at https://hoshin.app/mcp (Streamable HTTP, OAuth). 34 tools, 9 guided prompts: strategy deployment, review cadences, completeness score, weekly execution sync.",
+  "version": "4.8.0",
+  "description": "Hoshin Kanri X-Matrix MCP server — sovereign local JSON mode (data never leaves your machine) or the hosted server at https://hoshin.app/mcp (Streamable HTTP, OAuth). 42 tools, 9 guided prompts: strategy deployment, review cadences, completeness score, weekly execution sync.",
   "type": "module",
   "mcpName": "io.github.wellknownmcp/hoshin-kanri",
   "license": "MIT",

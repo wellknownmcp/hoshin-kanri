@@ -8,6 +8,7 @@
 // (scripts/agenda-notify.ts), not by this.
 import { ResourceNotFoundError } from '@modelcontextprotocol/server';
 import { VIEW_HTML, VIEW_RESOURCE, VIEW_URI } from './matrix-view.js';
+import { ROADMAP_VIEW_HTML, ROADMAP_VIEW_RESOURCE, ROADMAP_VIEW_URI } from './roadmap-app-view.js';
 
 export const AGENDA_URI = 'hoshin://agenda';
 
@@ -67,12 +68,16 @@ export function registerAgendaResource(server, readAgenda, { pollMs = POLL_MS, w
     }
   }
 
-  // The MCP App view of show_matrix (lib/matrix-view.js) is the other resource of this server.
-  server.setRequestHandler('resources/list', async () => ({ resources: [RESOURCE, VIEW_RESOURCE] }));
+  // The MCP App views (show_matrix: lib/matrix-view.js; show_roadmap and show_site_comparison:
+  // lib/roadmap-app-view.js) are the other resources of this server.
+  server.setRequestHandler('resources/list', async () => ({ resources: [RESOURCE, VIEW_RESOURCE, ROADMAP_VIEW_RESOURCE] }));
 
   server.setRequestHandler('resources/read', async (request) => {
     if (request.params.uri === VIEW_URI) {
       return { contents: [{ uri: VIEW_URI, mimeType: VIEW_RESOURCE.mimeType, text: VIEW_HTML, _meta: VIEW_RESOURCE._meta }] };
+    }
+    if (request.params.uri === ROADMAP_VIEW_URI) {
+      return { contents: [{ uri: ROADMAP_VIEW_URI, mimeType: ROADMAP_VIEW_RESOURCE.mimeType, text: ROADMAP_VIEW_HTML, _meta: ROADMAP_VIEW_RESOURCE._meta }] };
     }
     if (request.params.uri !== AGENDA_URI) throw notFound(request.params.uri);
     const agenda = await readAgenda();

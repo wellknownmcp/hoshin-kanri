@@ -25,6 +25,7 @@ choose the organization). Then ask Claude in plain words:
 - "Make a slide of our matrix for the board" — `share-outside`
 - "Build a cockpit of our strategy for the leadership meeting" — `strategy-cockpit`
 - "Sync our initiatives with Linear" — `weekly-sync`
+- "Put this month's OEE from the plant pulse into the site matrix" — `plant-pulse-to-matrix`
 
 The skills tell Claude the order of the tools, the defaults, and the rules that matter: people decide and
 Claude records; elements marked internal never leave the organization; a review keeps a snapshot of what

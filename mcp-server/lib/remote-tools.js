@@ -3,6 +3,7 @@
 // to the caller's credentials, so the behaviour cannot drift between them.
 
 import { viewPayload } from './matrix-view.js';
+import { roadmapViewPayload } from './roadmap-app-view.js';
 import { asPng } from './png.js';
 
 /**
@@ -697,6 +698,191 @@ export async function upsertCadence(api, args = {}) {
 
 export async function listMembers(api) {
   return api('/api/members');
+}
+
+// Excellence roadmap (docs/sprint-roadmap-excellence.md): the grid, the levels per
+// site, and what is missing. The agent reads and prepares a self-assessment.
+async function pickRoadmap(api, roadmapId) {
+  if (roadmapId) return roadmapId;
+  const all = (await api('/api/roadmaps')).roadmaps ?? [];
+  if (all.length === 0) return { error: 'This organization has no excellence roadmap yet. An admin creates one in the app (Roadmap).' };
+  if (all.length > 1) return { error: 'Several roadmaps: pass roadmap_id', roadmaps: all.map((r) => ({ id: r.id, name: r.name })) };
+  return all[0].id;
+}
+
+/** The roadmap as the API answers it, in the language asked for or the one of the site given. */
+async function readRoadmap(api, id, { matrix_id, lang } = {}) {
+  const query = new URLSearchParams();
+  // "pt-BR" reads as "pt"; an id that is not one is answered by the caller, not by a validation error.
+  const two = typeof lang === 'string' ? lang.trim().toLowerCase().slice(0, 2) : '';
+  if (/^[a-z]{2}$/.test(two)) query.set('lang', two);
+  if (typeof matrix_id === 'string' && /^[0-9a-f-]{36}$/i.test(matrix_id)) query.set('matrixId', matrix_id);
+  return api(`/api/roadmaps/${id}${query.size ? `?${query}` : ''}`);
+}
+
+export async function getExcellenceRoadmap(api, { roadmap_id, matrix_id, lang } = {}) {
+  const id = await pickRoadmap(api, roadmap_id);
+  if (typeof id !== 'string') return id;
+  const view = await readRoadmap(api, id, { matrix_id, lang });
+  if (!matrix_id) return view;
+  if (![...view.sites, ...view.availableSites].some((s) => s.matrixId === matrix_id)) {
+    return { error: `No site "${matrix_id}" on this roadmap: use a matrix id from list_matrices` };
+  }
+  return {
+    ...view,
+    sites: view.sites.filter((s) => s.matrixId === matrix_id),
+    assessments: view.assessments.filter((a) => a.matrixId === matrix_id),
+    findings: view.findings.filter((f) => f.matrixId === matrix_id)
+  };
+}
+
+export function roadmapScoreBody(args = {}) {
+  const score = { itemId: args.item_id };
+  if (args.level !== undefined) score.level = args.level;
+  if (args.not_applicable !== undefined) score.notApplicable = args.not_applicable;
+  if (args.evidence !== undefined) score.evidence = args.evidence;
+  if (args.remark !== undefined) score.remark = args.remark;
+  return score;
+}
+
+export async function assessRoadmapItem(api, args = {}) {
+  if (!args.matrix_id || !args.item_id) return { error: 'matrix_id (the site) and item_id are required: find them with get_excellence_roadmap' };
+  const score = roadmapScoreBody(args);
+  if (Object.keys(score).length === 1) return { error: 'Nothing to write: pass level, not_applicable, evidence or remark' };
+  const id = await pickRoadmap(api, args.roadmap_id);
+  if (typeof id !== 'string') return id;
+
+  // The server returns the draft already open for this site, or opens one: two calls at once share it.
+  const draft = await api(`/api/roadmaps/${id}/assessments`, { method: 'POST', body: JSON.stringify({ matrixId: args.matrix_id, kind: 'self' }) });
+  const draftId = draft.assessmentId;
+  const view = await api(`/api/roadmaps/${id}/assessments/${draftId}`, { method: 'PATCH', body: JSON.stringify({ scores: [score] }) });
+  const site = view.sites.find((s) => s.matrixId === args.matrix_id);
+  return {
+    roadmapId: id,
+    assessmentId: draftId,
+    site: site?.name ?? null,
+    // What is now in the draft, and what the site is still judged on until a person validates it.
+    written: view.assessments.find((a) => a.id === draftId)?.scores.find((s) => s.itemId === args.item_id) ?? null,
+    reference: site?.reference ?? null,
+    note: 'Written into the draft self-assessment of this site. It counts once a person validates it in the app; an official assessment is an auditor\'s.'
+  };
+}
+
+// show_roadmap and show_site_comparison: the roadmap as an MCP App (lib/roadmap-app-view.js).
+const NO_SITE = 'No site is on this roadmap yet: a site appears once it has a target or an assessment (the app, or assess_roadmap_item).';
+
+export async function showRoadmap(api, { roadmap_id, matrix_id, lang } = {}) {
+  const id = await pickRoadmap(api, roadmap_id);
+  if (typeof id !== 'string') return id;
+  const wanted = typeof matrix_id === 'string' ? matrix_id.trim().toLowerCase() : null;
+  const view = await readRoadmap(api, id, { matrix_id: wanted, lang });
+  const listed = view.sites.map((s) => ({ matrixId: s.matrixId, name: s.name }));
+  const idle = wanted ? (view.availableSites || []).find((s) => s.matrixId === wanted) : null;
+  if (idle) {
+    return { error: `"${idle.name}" has no target and no assessment on this roadmap yet: nothing to show. A level is written with assess_roadmap_item, a target in the app.`, sites: listed };
+  }
+  if (view.sites.length === 0) return { error: NO_SITE };
+  const site = wanted ? view.sites.find((s) => s.matrixId === wanted) : view.sites.length === 1 ? view.sites[0] : null;
+  if (!site) {
+    return {
+      error: wanted ? `No site "${matrix_id}" on this roadmap: pass one of the sites below` : 'Several sites on this roadmap: pass matrix_id, or use show_site_comparison to see them side by side',
+      sites: listed,
+    };
+  }
+  // The language of the site, not the reader's: a site with no preference reads the source
+  // language, which the API only serves when asked for by name.
+  const siteLanguage = site.locale ?? view.sourceLocale;
+  const inSiteLanguage = lang || siteLanguage === view.locale ? view : await readRoadmap(api, id, { lang: siteLanguage });
+  const payload = roadmapViewPayload(inSiteLanguage, { mode: 'site', matrixId: site.matrixId });
+  if (!payload) return { error: 'The site is no longer on this roadmap: read it again with get_excellence_roadmap.' };
+  return {
+    view: payload,
+    summary: {
+      shown: true,
+      note: 'Displayed to the person as the roadmap view where the host supports MCP Apps. The same figures are below; get_excellence_roadmap has everything, with the findings.',
+    },
+  };
+}
+
+export async function compareSites(api, { roadmap_id, lang } = {}) {
+  const id = await pickRoadmap(api, roadmap_id);
+  if (typeof id !== 'string') return id;
+  const view = await readRoadmap(api, id, { lang });
+  if (view.sites.length === 0) return { error: NO_SITE };
+  return {
+    view: roadmapViewPayload(view, { mode: 'comparison' }),
+    summary: {
+      shown: true,
+      note: 'Displayed to the person as the site comparison where the host supports MCP Apps. Averages are over the items assessed and are a reading aid, not a grade: say which assessment each site is judged on.',
+    },
+  };
+}
+
+// One grid, several languages: the translation of the roadmap is written by whoever
+// owns the grid (the API requires an admin). With no text, it reads what is stored.
+export function roadmapTranslationBody(args = {}) {
+  const body = {};
+  if (args.name !== undefined) body.name = args.name;
+  if (args.description !== undefined) body.description = args.description;
+  if (Array.isArray(args.levels)) {
+    body.levels = args.levels.map((l) => ({ ...(l?.name !== undefined && { name: l.name }), ...(l?.meaning !== undefined && { meaning: l.meaning }) }));
+  }
+  if (Array.isArray(args.themes)) {
+    body.themes = args.themes.map((th) => ({
+      id: th.id,
+      ...(th.name !== undefined && { name: th.name }),
+      ...(th.objective !== undefined && { objective: th.objective }),
+      ...(Array.isArray(th.items) && {
+        items: th.items.map((it) => ({
+          id: it.id,
+          ...(it.question !== undefined && { question: it.question }),
+          ...(it.how_to_assess !== undefined && { howToAssess: it.how_to_assess }),
+          ...(Array.isArray(it.level_descriptions) && { levelDescriptions: it.level_descriptions }),
+        })),
+      }),
+    }));
+  }
+  return body;
+}
+
+function translationLocale(args) {
+  const locale = typeof args.locale === 'string' ? args.locale.trim().toLowerCase() : '';
+  return /^[a-z]{2}$/.test(locale) ? locale : null;
+}
+
+// get_roadmap_translation reads, translate_roadmap writes: one tool per HTTP
+// method, as the Claude directory requires (docs/sprint-annuaire-connecteurs.md).
+export async function getRoadmapTranslation(api, args = {}) {
+  const locale = translationLocale(args);
+  if (!locale) return { error: 'locale is required: a two-letter language (en, fr, es, pt, de…)' };
+  const id = await pickRoadmap(api, args.roadmap_id);
+  if (typeof id !== 'string') return id;
+  const stored = await api(`/api/roadmaps/${id}/translations/${locale}`);
+  return {
+    roadmapId: id,
+    ...stored,
+    note: 'What is stored for this language; an empty string is a text not translated yet. The texts to translate are in get_excellence_roadmap, read in the source language.'
+  };
+}
+
+export async function translateRoadmap(api, args = {}) {
+  const locale = translationLocale(args);
+  if (!locale) return { error: 'locale is required: a two-letter language (en, fr, es, pt, de…)' };
+  const body = roadmapTranslationBody(args);
+  if (Object.keys(body).length === 0) {
+    return { error: 'No text to write: give name, description, levels or themes. To read what is stored for this language, call get_roadmap_translation.' };
+  }
+  const id = await pickRoadmap(api, args.roadmap_id);
+  if (typeof id !== 'string') return id;
+  const view = await api(`/api/roadmaps/${id}/translations/${locale}`, { method: 'PUT', body: JSON.stringify(body) });
+  return {
+    roadmapId: id,
+    locale,
+    sourceLocale: view.sourceLocale,
+    // What is left to translate, per language.
+    languages: view.languages,
+    note: 'Translation written. "missing" counts the texts of a language still served in the source language.'
+  };
 }
 
 // show_matrix (docs/sprint-pages-de-repli.md, lot C): the plain view, as an MCP App.

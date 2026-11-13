@@ -1,8 +1,27 @@
 # Changelog
 
-## Unreleased
+## 4.8.0 — 2026-11-13 (since 4.5.0)
 
-### Security (hosted HTTP transport only; the package is unchanged)
+### Breaking
+
+- No tool both reads and writes any more, as the Claude connectors directory requires.
+  `share_matrix` only creates a public link (its `action` argument is gone): `list_matrix_shares` lists
+  the links of a matrix, `revoke_matrix_share` ends one. `translate_roadmap` only writes and refuses a
+  call with no text: `get_roadmap_translation` reads what is stored for a language.
+
+### Added
+
+- Every tool carries a `title`, on the tool and in its annotations.
+- **Excellence roadmap** (hosted only): a maturity grid assessed site by site, each site being a matrix of
+  the cascade. `get_excellence_roadmap`, `assess_roadmap_item` (a level and its evidence, in the site's
+  draft self-assessment), `get_roadmap_translation` and `translate_roadmap` (one grid, several languages;
+  writing a translation needs an organization admin), and two MCP App views on `ui://hoshin/roadmap`:
+  `show_roadmap` (one site, item by item) and `show_site_comparison` (sites side by side). `get_agenda`
+  reports the roadmap items that need attention. In local mode these tools answer that the roadmap lives
+  in the hosted app.
+- **Plugin 1.1.0**: the `plant-pulse-to-matrix` skill.
+
+### Security (hosted HTTP transport only)
 
 - Sessions are capped per organization (`MCP_MAX_SESSIONS_PER_ORG`, 200), whatever number of credentials it holds.
   When the session map is full, the organization holding the most sessions gives up its least recently used one,

@@ -17,7 +17,7 @@ import { tools, getQuadrantLabel } from './lib/tool-definitions.js';
 import { VERSION } from './lib/version.js';
 import { assertSafeEndpoint } from './lib/safe-endpoint.js';
 import { registerAgendaResource } from './lib/agenda-resource.js';
-import { apiErrorMessage, listMatrices, pickMatrix, findElement, elementBody, ideaUpdateBody, updateElementStatus, managementArchitecture, diagnoseThemeDeployment, suggestMeetingForTopic, getAgenda, scheduleReview, recordReview, whoami, reportMissingCapability, archiveMatrix, deleteMatrix, deleteElement, exportMatrixImage, getReview, upsertInitiativeSheet, setKpiDefinition, upsertCadence, listMembers, showMatrix } from './lib/remote-tools.js';
+import { apiErrorMessage, listMatrices, pickMatrix, findElement, elementBody, ideaUpdateBody, updateElementStatus, managementArchitecture, diagnoseThemeDeployment, suggestMeetingForTopic, getAgenda, scheduleReview, recordReview, getExcellenceRoadmap, assessRoadmapItem, getRoadmapTranslation, translateRoadmap, showRoadmap, compareSites, whoami, reportMissingCapability, archiveMatrix, deleteMatrix, deleteElement, exportMatrixImage, getReview, upsertInitiativeSheet, setKpiDefinition, upsertCadence, listMembers, showMatrix } from './lib/remote-tools.js';
 import { toolResult } from './lib/matrix-view.js';
 import { getHelp, SERVER_INSTRUCTIONS } from './lib/help.js';
 import { allowedOrigins, originAllowed } from './lib/origin.js';
@@ -453,39 +453,46 @@ async function handleGetMatrixData(args, authContext) {
   };
 }
 
-async function handleShareMatrix(args, authContext) {
-  const { action = 'create', matrix_id, share_id, label, expires_in_days, hide_figures, full_sheets } = args;
-
+// share_matrix, list_matrix_shares and revoke_matrix_share: one tool per HTTP
+// method, as the Claude directory requires (docs/sprint-annuaire-connecteurs.md).
+async function shareTarget(matrixId, authContext) {
   const headers = {
     'Authorization': `Bearer ${authContext.token}`,
     'X-Organization-Id': authContext.organizationId
   };
-
-  let targetMatrixId = matrix_id;
-  if (!targetMatrixId) {
-    const matricesResult = await callAPI('/api/matrices?isActive=true&limit=1', { headers });
-    if (matricesResult.matrices && matricesResult.matrices.length > 0) {
-      targetMatrixId = matricesResult.matrices[0].id;
-    } else {
-      return { error: 'No matrix found. Create a matrix first.', organization: authContext.organizationName };
-    }
+  if (matrixId) return { headers, matrixId };
+  const matricesResult = await callAPI('/api/matrices?isActive=true&limit=1', { headers });
+  if (matricesResult.matrices && matricesResult.matrices.length > 0) {
+    return { headers, matrixId: matricesResult.matrices[0].id };
   }
+  return { error: 'No matrix found. Create a matrix first.', organization: authContext.organizationName };
+}
 
-  if (action === 'list') {
-    const result = await callAPI(`/api/matrices/${targetMatrixId}/shares`, { headers });
-    return { matrixId: targetMatrixId, ...result };
-  }
+async function handleListMatrixShares(args, authContext) {
+  const target = await shareTarget(args.matrix_id, authContext);
+  if (target.error) return target;
+  const result = await callAPI(`/api/matrices/${target.matrixId}/shares`, { headers: target.headers });
+  return { matrixId: target.matrixId, ...result };
+}
 
-  if (action === 'revoke') {
-    if (!share_id) {
-      return { error: 'share_id is required for action=revoke — call share_matrix with action=list to find it' };
-    }
-    const result = await callAPI(`/api/matrices/${targetMatrixId}/shares/${share_id}`, {
-      method: 'DELETE',
-      headers
-    });
-    return { success: true, message: 'Share link revoked — the public page is no longer accessible.', ...result };
+async function handleRevokeMatrixShare(args, authContext) {
+  if (!args.share_id) {
+    return { error: 'share_id is required: call list_matrix_shares to find it' };
   }
+  const target = await shareTarget(args.matrix_id, authContext);
+  if (target.error) return target;
+  const result = await callAPI(`/api/matrices/${target.matrixId}/shares/${args.share_id}`, {
+    method: 'DELETE',
+    headers: target.headers
+  });
+  return { success: true, message: 'Share link revoked: the public page no longer opens.', ...result };
+}
+
+async function handleShareMatrix(args, authContext) {
+  const { matrix_id, label, expires_in_days, hide_figures, full_sheets } = args;
+  const target = await shareTarget(matrix_id, authContext);
+  if (target.error) return target;
+  const { headers, matrixId: targetMatrixId } = target;
 
   const created = await callAPI(`/api/matrices/${targetMatrixId}/shares`, {
     method: 'POST',
@@ -500,7 +507,7 @@ async function handleShareMatrix(args, authContext) {
 
   return {
     success: true,
-    message: 'Matrix published as a read-only public page. Anyone with this link can view it until you revoke it (share_matrix action=revoke).',
+    message: 'Matrix published as a read-only public page. Anyone with this link can view it until you revoke it (revoke_matrix_share).',
     ...created
   };
 }
@@ -830,6 +837,12 @@ function createServer(authContext, era = 'legacy') {
         case 'share_matrix':
           result = await handleShareMatrix(args || {}, authContext);
           break;
+        case 'list_matrix_shares':
+          result = await handleListMatrixShares(args || {}, authContext);
+          break;
+        case 'revoke_matrix_share':
+          result = await handleRevokeMatrixShare(args || {}, authContext);
+          break;
         case 'create_matrix':
           result = await handleCreateMatrix(args || {}, authContext);
           break;
@@ -904,6 +917,24 @@ function createServer(authContext, era = 'legacy') {
           break;
         case 'upsert_cadence':
           result = await withOrg(upsertCadence(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'get_excellence_roadmap':
+          result = await withOrg(getExcellenceRoadmap(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'assess_roadmap_item':
+          result = await withOrg(assessRoadmapItem(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'get_roadmap_translation':
+          result = await withOrg(getRoadmapTranslation(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'translate_roadmap':
+          result = await withOrg(translateRoadmap(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'show_roadmap':
+          result = await showRoadmap(apiFor(authContext), args || {});
+          break;
+        case 'show_site_comparison':
+          result = await compareSites(apiFor(authContext), args || {});
           break;
         case 'list_members':
           result = await withOrg(listMembers(apiFor(authContext), args || {}), authContext);

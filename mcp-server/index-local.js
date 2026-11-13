@@ -899,10 +899,12 @@ function buildServer({ era = 'legacy' } = {}) {
           result = await handleGetMatrixData(args || {});
           break;
         case 'share_matrix':
+        case 'list_matrix_shares':
+        case 'revoke_matrix_share':
           // Sovereign mode: data lives only on this machine, there is no cloud
           // page to publish to — and that is the point of local mode.
           result = {
-            error: 'share_matrix is not available in local JSON mode: your data never leaves this machine (sovereignty by design). To share the matrix, generate a snapshot artifact with the matrix_artifact prompt and send it — a deliberate, one-shot publication you fully control.'
+            error: 'Public links (share_matrix, list_matrix_shares, revoke_matrix_share) are not available in local JSON mode: your data never leaves this machine (sovereignty by design). To share the matrix, generate a snapshot artifact with the matrix_artifact prompt and send it — a deliberate, one-shot publication you fully control.'
           };
           break;
         case 'get_matrix_summary':
@@ -987,6 +989,15 @@ function buildServer({ era = 'legacy' } = {}) {
           break;
         case 'show_matrix':
           result = await handleShowMatrix(args || {});
+          break;
+        case 'get_excellence_roadmap':
+        case 'assess_roadmap_item':
+        case 'get_roadmap_translation':
+        case 'translate_roadmap':
+        case 'show_roadmap':
+        case 'show_site_comparison':
+          // Local mode keeps the X-Matrix in files; the excellence roadmap lives in the hosted app.
+          result = { error: 'The excellence roadmap is not available in local mode: it lives in the hosted app (https://hoshin.app/roadmap).' };
           break;
         case 'list_members':
           // Local mode: one person, the one at the keyboard; owners are named in the files.

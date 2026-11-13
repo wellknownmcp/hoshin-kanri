@@ -35,6 +35,7 @@ Repairing: delete_element for a duplicate or a mistake (update_element_status "c
 archive_matrix sets a matrix aside; delete_matrix asks for its exact name and cannot be undone.
 Copying a value from another tool (HubSpot, a finance tool): pass origin_tool, origin_ref and extracted_at with current_value.
 To show the matrix to the person in the conversation: show_matrix (the X-Matrix and a card per initiative; hosts with MCP Apps draw it).
+To show the excellence roadmap: show_roadmap (one site, item by item, with its targets) and show_site_comparison (the sites side by side).
 For anything shown outside the organization, read with get_matrix_data audience "external": the same filter as a public link,
 so you never decide alone what may leave. Each initiative has a page (pageUrl), the reference version to cite.
 For a deck: export_matrix_image (audience "external" leaves out internal elements and every figure; layout "initiatives"
@@ -51,6 +52,12 @@ whoami once, then get_agenda with since = the time of its previous pass. For eac
 - kpi_reading_missing: read the KPI's definition (get_matrix_data, kpiDefinition), take the value where it
   says, then update_element_status with current_value, period, origin_tool, origin_ref, extracted_at. Alone: yes.
   A reading of an open period is provisional and may be corrected; once its period has ended it is final.
+- roadmap_assessment_due, roadmap_item_unlinked, roadmap_link_closed, roadmap_score_unproven: gaps of the
+  excellence roadmap (get_excellence_roadmap, "findings"). Signal them to the person who owns the site: a
+  site to assess again, an item under its target with no initiative or with a closed one, a score with no
+  evidence. Setting a target, linking an initiative and validating an assessment are done in the app.
+  One grid, several languages: a site reads the roadmap in its own. get_roadmap_translation reads a language, translate_roadmap writes it,
+  for an admin only (a translation is part of the standard); an editor signals a wrong one to the owner.
 - initiative_stale: get the progress from the execution tool (external_ref) or ask the owner; then update_element_status
   with progress and notes, and upsert_initiative_sheet for the next action and the health. Alone: from a tool, yes;
   the health of an initiative is the owner's call, propose it.
@@ -77,12 +84,12 @@ in "prompts" below: follow it as if the user had picked the prompt.
 - OAuth (claude.ai, Cursor, Desktop): you act as the person who consented, capped by the scopes (mcp:read, mcp:write, mcp:admin).
 - API token (hk_...): created by an admin, it acts as that admin, capped by its permissions (read, or read and write: editor at most).
 - A matrix with assigned editors can only be changed by them and by admins (MATRIX_EDIT_RESTRICTED).
-- The plan can hold agents at read-only (PLAN_READ_ONLY): whoami says whether it is enforced.
+- The plan limits sizes (matrices, users) and single sign-on, never what an agent may do: whoami says whether limits are enforced.
 - A connection acts in one organization. A person may have several: to act in another, they connect the client
   a second time and choose that organization on the consent screen. This connection is not told the others.
 Call whoami to read all of it for your connection, including which matrices you may edit.`,
   errors: `Errors arrive as "HTTP <status> <CODE>: <message>". The common ones:
-FORBIDDEN (role too low for this write), PLAN_READ_ONLY (the plan gives agents read-only access),
+FORBIDDEN (role too low for this write),
 PLAN_LIMIT_MATRICES / PLAN_LIMIT_USERS (plan limit reached), MATRIX_EDIT_RESTRICTED (matrix reserved to its editors),
 NOT_ADJACENT (correlation between non-adjacent quadrants), NOT_A_KPI / KPI_NO_PROGRESS (a reading or a definition on a non-KPI, a progress on a KPI),
 NOT_AN_INITIATIVE (a sheet on a non-initiative), HEALTH_NOTE_REQUIRED (a health without its sentence), MEASURE_NOT_A_KPI (measured_by is not a KPI of the matrix),
@@ -92,7 +99,7 @@ ELEMENT_NOT_FOUND, VALIDATION_ERROR (with the invalid fields), RATE_LIMITED,
 CONFIRMATION_MISMATCH (delete_matrix: confirm_name is not the exact name), DEFAULT_MATRIX_ADMIN_ONLY (archiving or deleting the default matrix).
 If what you need does not exist, say so with report_missing_capability.`,
   local: `Local mode keeps the matrix in JSON files on this machine (HOSHIN_DATA_DIR); nothing is sent anywhere.
-The same tools work, except share_matrix (no public page) and report_missing_capability (it gives you the address to file it yourself).
+The same tools work, except the public links (share_matrix, list_matrix_shares, revoke_matrix_share: no public page) and report_missing_capability (it gives you the address to file it yourself).
 Rights do not apply: whoever runs the server owns the data.`,
 };
 

@@ -6,7 +6,7 @@ objectives, initiatives, KPIs, the correlations between them, the review
 cadences that keep them alive, and a completeness score that gives a verdict
 instead of a vibe.
 
-**34 tools · 9 guided prompts · 2 transports · a Claude plugin · MCP revisions 2026-07-28 and 2025-11-25 · MIT.**
+**42 tools · 9 guided prompts · 2 transports · a Claude plugin · MCP revisions 2026-07-28 and 2025-11-25 · MIT.**
 
 Registry entry: [`io.github.wellknownmcp/hoshin-kanri`](https://registry.modelcontextprotocol.io)
 · npm: [`hoshin-kanri-mcp`](https://www.npmjs.com/package/hoshin-kanri-mcp)
@@ -26,9 +26,11 @@ by forty years. This server exposes it over the Model Context Protocol.
 
 ### Claude plugin — the connector and the know-how in one step
 
-The plugin bundles the hosted connector with six skills that tell Claude how to work with an X-Matrix:
+The plugin bundles the hosted connector with seven skills that tell Claude how to work with an X-Matrix:
 build one, run the review cycle, follow it on a schedule, share it outside without leaking what is
-internal, build a cockpit, sync initiatives with Linear or Jira.
+internal, build a cockpit, sync initiatives with Linear or Jira, and carry a plant agent's daily records
+(such as the morning plant pulse of Claude for Manufacturing) up to the site matrix as monthly readings,
+ideas and roadmap evidence.
 
 - **claude.ai, Claude desktop, Cowork**: Customize > Plugins > Add > Add marketplace, enter
   `wellknownmcp/hoshin-kanri`, then add **Hoshin Kanri X-Matrix** and connect its **hoshin** connector.

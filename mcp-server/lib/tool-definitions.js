@@ -296,7 +296,7 @@ Use this instead of get_matrix_summary when you need the full matrix — typical
   },
   {
     name: 'share_matrix',
-    description: `Publish a matrix as a public read-only web page and return the tokenized link — or list/revoke existing share links.
+    description: `Publish a matrix as a public read-only web page and return the tokenized link. list_matrix_shares lists the existing links, revoke_matrix_share ends one.
 
 Publication is a deliberate act: anyone with the link can view the matrix (title, elements, correlations, completeness score) until the link is revoked or expires. Elements marked internal (upsert_element visibility "internal") never appear, nor their correlations; hide_figures leaves out every value, target, unit and execution link. Before publishing, mark internal what must not leave the organization (prospects, salaries, anything said in confidence). The page is never indexed by search engines. Use it to share the X-Matrix with people OUTSIDE the organization (board members, investors, partners) without creating accounts. For sharing inside a claude.ai Team organization, prefer the matrix_artifact prompt instead.
 
@@ -304,18 +304,9 @@ Not available in local JSON mode (sovereign mode has no cloud page by design —
     inputSchema: {
       type: 'object',
       properties: {
-        action: {
-          type: 'string',
-          enum: ['create', 'list', 'revoke'],
-          description: 'create (default): publish and return the link. list: existing shares with status. revoke: kill a link (requires share_id).'
-        },
         matrix_id: {
           type: 'string',
           description: 'UUID of the matrix (default: the default matrix of the organization). Pass it as soon as list_matrices shows more than one.'
-        },
-        share_id: {
-          type: 'string',
-          description: 'UUID of the share to revoke (required for action=revoke, from action=list)'
         },
         label: {
           type: 'string',
@@ -336,6 +327,39 @@ Not available in local JSON mode (sovereign mode has no cloud page by design —
           description: 'true: the page shows the structure only, no value, target, unit or execution link (default false)'
         }
       }
+    }
+  },
+  {
+    name: 'list_matrix_shares',
+    description:
+      'List the public links of a matrix made with share_matrix: id, label, created and expiry dates, whether the link shows figures or full sheets, and whether it is still active. Use it before revoke_matrix_share, or to tell the person who can still open the matrix from outside. Not available in local JSON mode.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        matrix_id: {
+          type: 'string',
+          description: 'UUID of the matrix (default: the default matrix of the organization)'
+        }
+      }
+    }
+  },
+  {
+    name: 'revoke_matrix_share',
+    description:
+      'Revoke a public link of a matrix: the page stops opening at once, for everyone who has the link. It cannot be undone; a new share_matrix makes a new link. Take share_id from list_matrix_shares. Not available in local JSON mode.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        matrix_id: {
+          type: 'string',
+          description: 'UUID of the matrix (default: the default matrix of the organization)'
+        },
+        share_id: {
+          type: 'string',
+          description: 'UUID of the link to revoke, from list_matrix_shares'
+        }
+      },
+      required: ['share_id']
     }
   },
   {
@@ -716,6 +740,123 @@ Use it to answer "is our group strategy actually deployed in the sites?", to pre
     }
   },
   {
+    name: 'get_excellence_roadmap',
+    description:
+      'The excellence roadmap of the organization: a maturity grid (themes, items asked as questions, one description per level) assessed site by site. Returns the grid, and for each site its level and target per item, the initiative linked to an item, the assessments, and "findings": what is missing (a site due for an assessment, an item under its target with no initiative or with a closed one, a score with no evidence). Signal the findings; people decide. A site is a matrix: pass matrix_id to read one site only, in the language that site works in (one grid is kept in several languages; every site is assessed on the same items). With several roadmaps, pass roadmap_id (the error lists them).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        roadmap_id: { type: 'string', description: 'UUID of the roadmap; optional when the organization has one' },
+        matrix_id: { type: 'string', description: 'UUID of a site (a matrix, from list_matrices): only that site, in its own language' },
+        lang: { type: 'string', description: 'Language of the grid texts (en, fr, es, pt, de…). One grid, several languages: a text not translated comes in the source language. Without it: the language of the site given, else the source language. "languages" in the answer lists what exists.' }
+      }
+    }
+  },
+  {
+    name: 'assess_roadmap_item',
+    description:
+      'Write the level observed on one item of the excellence roadmap for a site, with the evidence: what was seen (a document, a figure, a workstation). It goes into the draft self-assessment of that site, opened if there is none. A field given replaces the stored one; not_applicable clears the level, and a level given later makes the item applicable again. The site keeps being judged on its last validated assessment until a person validates this draft. Never score without evidence, and never from a guess: read the item with get_excellence_roadmap first (howToAssess says what to go and see). You prepare; a person validates the self-assessment in the app, and an official assessment is an auditor\'s: it cannot be written or validated here.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        roadmap_id: { type: 'string', description: 'UUID of the roadmap; optional when the organization has one' },
+        matrix_id: { type: 'string', description: 'UUID of the site assessed (a matrix)' },
+        item_id: { type: 'string', description: 'UUID of the item (from get_excellence_roadmap)' },
+        level: { type: 'integer', minimum: 1, maximum: 6, description: 'Level observed, 1 = the first level of the roadmap' },
+        not_applicable: { type: 'boolean', description: 'true when the item does not apply to this site' },
+        evidence: { type: 'string', description: 'What was seen that supports the level' },
+        remark: { type: 'string', description: 'Strong point or recommendation' }
+      },
+      required: ['matrix_id', 'item_id']
+    }
+  },
+  {
+    name: 'show_roadmap',
+    description:
+      'Show one site against the excellence roadmap to the person, in the conversation: theme by theme, each item with the level the site stands at, its target, what the current level says and what the next one asks for, the initiative that must raise it, and the items below target with no initiative. Hosts that support MCP Apps (claude.ai on the web) display it; elsewhere you get the same content as text. It is the plain reference view, in the language that site reads the grid in: to build your own presentation, read get_excellence_roadmap. With several sites, pass matrix_id (the error lists them); to put the sites side by side, use show_site_comparison.',
+    _meta: { ui: { resourceUri: 'ui://hoshin/roadmap' } },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        roadmap_id: { type: 'string', description: 'UUID of the roadmap; optional when the organization has one' },
+        matrix_id: { type: 'string', description: 'UUID of the site (a matrix, from list_matrices); optional when one site only is on the roadmap' },
+        lang: { type: 'string', description: 'Language of the grid texts (en, fr, es, pt, de…); default: the language of the site' }
+      }
+    }
+  },
+  {
+    name: 'show_site_comparison',
+    description:
+      'Show the sites of the excellence roadmap side by side to the person, in the conversation: per theme the average level of each site, the overall average, the number of items below target, the assessment each site is judged on, and the items the sites are furthest apart on (where one plant has something to show another). Hosts that support MCP Apps display it; elsewhere you get the same content as text. Averages are over the items assessed, each shown with the number of items it stands on, and are a reading aid: a level is a step, not a grade. What each site is judged on (official, self-assessment, draft) is written under its name: say it when you comment. It compares; it ranks nobody and decides nothing.',
+    _meta: { ui: { resourceUri: 'ui://hoshin/roadmap' } },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        roadmap_id: { type: 'string', description: 'UUID of the roadmap; optional when the organization has one' },
+        lang: { type: 'string', description: 'Language of the grid texts (en, fr, es, pt, de…); default: the language of your account if the roadmap is translated into it, else its source language' }
+      }
+    }
+  },
+  {
+    name: 'get_roadmap_translation',
+    description:
+      'Read what is stored for one more language of the excellence roadmap: the name, description, levels, themes and items in that language, an empty string where a text is not translated yet, and how many texts are still missing. Read it before translate_roadmap, with get_excellence_roadmap in the source language for the texts to translate and their ids.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        roadmap_id: { type: 'string', description: 'UUID of the roadmap; optional when the organization has one' },
+        locale: { type: 'string', enum: ['en', 'fr', 'es', 'pt', 'de', 'it', 'nl', 'pl', 'cs', 'ro', 'tr', 'zh', 'ja'], description: 'The language to read; never the source language of the roadmap' }
+      },
+      required: ['locale']
+    }
+  },
+  {
+    name: 'translate_roadmap',
+    description:
+      'Write the texts of the excellence roadmap in one more language. One grid, several languages: a group keeps one roadmap and its translations, and every site is assessed on the same items, each reading them in its own language. A translation is part of the standard, so it is the work of whoever owns the grid: writing one requires an organization admin (an API token created by an admin with the admin permission; a claude.ai connector acts as an editor at most and is refused with 403). Read what is stored first with get_roadmap_translation. A field given replaces the stored translation, an empty string removes it (the source language is served again), a theme or item left out keeps what it had; at least one text is required. Translate the meaning of each level faithfully: a description that drifts changes what the site is scored on. The source language is not written here; the grid is edited in the app.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        roadmap_id: { type: 'string', description: 'UUID of the roadmap; optional when the organization has one' },
+        locale: { type: 'string', enum: ['en', 'fr', 'es', 'pt', 'de', 'it', 'nl', 'pl', 'cs', 'ro', 'tr', 'zh', 'ja'], description: 'The language to write; never the source language of the roadmap' },
+        name: { type: 'string', description: 'Name of the roadmap in that language' },
+        description: { type: 'string', description: 'Its description in that language' },
+        levels: {
+          type: 'array',
+          description: 'The levels, in the order of the roadmap (first = level 1)',
+          items: { type: 'object', properties: { name: { type: 'string' }, meaning: { type: 'string' } } }
+        },
+        themes: {
+          type: 'array',
+          description: 'Themes to translate, by id; those left out keep their translation',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'UUID of the theme' },
+              name: { type: 'string' },
+              objective: { type: 'string' },
+              items: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string', description: 'UUID of the item' },
+                    question: { type: 'string' },
+                    how_to_assess: { type: 'string' },
+                    level_descriptions: { type: 'array', items: { type: 'string' }, description: 'One per level, in order; an empty string leaves that level in the source language' }
+                  },
+                  required: ['id']
+                }
+              }
+            },
+            required: ['id']
+          }
+        }
+      },
+      required: ['locale']
+    }
+  },
+  {
     name: 'list_members',
     description:
       'The directory of the organization: the active members, with their id and name. Use the id as owner_id in upsert_element to name who owns an objective, an initiative or a KPI. Inviting a person is done by an admin in the app (Settings, Users): it sends an email in the name of the organization. In local mode there are no members.',
@@ -829,13 +970,70 @@ const READ_ONLY = new Set([
   'export_matrix_image',
   'get_review',
   'list_members',
-  'show_matrix'
+  'show_matrix',
+  'get_excellence_roadmap',
+  'show_roadmap',
+  'show_site_comparison',
+  'list_matrix_shares',
+  'get_roadmap_translation'
 ]);
-const DESTRUCTIVE = new Set(['set_correlation', 'set_matrix_parent', 'share_matrix', 'archive_matrix', 'delete_matrix', 'delete_element']);
+const DESTRUCTIVE = new Set(['set_correlation', 'set_matrix_parent', 'revoke_matrix_share', 'archive_matrix', 'delete_matrix', 'delete_element']);
+
+// The name a person reads in the client's permission prompt and tool list. The
+// Claude directory requires one on every tool (docs/sprint-annuaire-connecteurs.md).
+export const TOOL_TITLES = {
+  add_idea: 'Add an idea',
+  update_idea: 'Update an idea',
+  list_matrices: 'List matrices',
+  list_objectives: 'List objectives',
+  get_matrix_summary: 'Get matrix summary',
+  update_element_status: 'Update status, reading or progress',
+  search_ideas: 'Search ideas',
+  get_matrix_completeness: 'Get completeness score',
+  get_matrix_data: 'Get full matrix data',
+  share_matrix: 'Publish a public link',
+  list_matrix_shares: 'List public links',
+  revoke_matrix_share: 'Revoke a public link',
+  get_management_architecture: 'Get meeting architecture',
+  diagnose_theme_deployment: 'Diagnose theme deployment',
+  suggest_meeting_for_topic: 'Suggest a meeting for a topic',
+  get_agenda: 'Get agenda and what is due',
+  schedule_review: 'Schedule a review',
+  record_review: 'Record a review',
+  create_matrix: 'Create a matrix',
+  upsert_element: 'Add or edit an element',
+  get_cascade: 'Get cascade report',
+  set_matrix_parent: 'Set parent matrix',
+  set_correlation: 'Set a correlation',
+  show_matrix: 'Show the X-Matrix',
+  get_review: 'Get a recorded review',
+  upsert_cadence: 'Add or edit a cadence',
+  upsert_initiative_sheet: 'Edit an initiative sheet',
+  set_kpi_definition: 'Set a KPI definition',
+  get_excellence_roadmap: 'Get excellence roadmap',
+  assess_roadmap_item: 'Assess a roadmap item',
+  show_roadmap: 'Show a site roadmap',
+  show_site_comparison: 'Compare sites',
+  get_roadmap_translation: 'Get a roadmap translation',
+  translate_roadmap: 'Write a roadmap translation',
+  list_members: 'List members',
+  archive_matrix: 'Archive a matrix',
+  delete_matrix: 'Delete a matrix',
+  delete_element: 'Delete an element',
+  export_matrix_image: 'Export matrix image',
+  whoami: 'Who am I',
+  get_help: 'Get help',
+  report_missing_capability: 'Report a missing capability'
+};
 
 for (const tool of tools) {
   const readOnly = READ_ONLY.has(tool.name);
+  const title = TOOL_TITLES[tool.name];
+  if (!title) throw new Error(`tool ${tool.name} has no title in TOOL_TITLES`);
+  // MCP 2025-06-18 puts the display name on the tool; older clients read it in annotations.
+  tool.title = title;
   tool.annotations = {
+    title,
     readOnlyHint: readOnly,
     ...(readOnly ? {} : { destructiveHint: DESTRUCTIVE.has(tool.name) }),
     // share_matrix publishes a page anyone with the link can open.
