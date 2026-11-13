@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.8.1 — 2026-11-13
+
+### Fixed
+
+- Hosted mode: `update_element_status` dropped `origin_tool`, `origin_ref` and `extracted_at`, so a KPI
+  reading was stored without its source. The handler now passes every argument on.
+- Plugin 1.1.2: `plant-pulse-to-matrix` says how a PPM KPI comes from the quality component, names the
+  KPIs the plant records cannot give, and makes one idea per recurring pattern.
+
 ## 4.8.0 — 2026-11-13 (since 4.5.0)
 
 ### Breaking

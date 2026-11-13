@@ -24,6 +24,11 @@ CAPAs into Hoshin, and never write a target: targets are decided by people, in H
    - `source_ref`: the site's Operations Command Center dashboard, its day records, the field read;
    - `data_owner`: the person who answers for the number at the site; `frequency`: "monthly".
 
+   A quality KPI in PPM can come from the quality component: (1 - mean daily quality) x 1,000,000, where
+   quality is good over good plus scrap. That is scrap per million parts made; whether it is what the KPI
+   measures (customer returns, a single shop) is the person's call. Say which KPIs the plant records
+   cannot give (a changeover time, a delivery rate, absenteeism) and leave them to their own source.
+
 ## 2. Find the plant records
 
 The plant plugin keeps two dashboards per site in the Claude artifact store of the account that ran it,
@@ -78,7 +83,9 @@ it only when the person runs it or gives it. Propose an idea, with `add_idea`, w
 - an 8D labels an action "improvement, not corrective action";
 - the same machines stay at the top of the bad-actor ranking month after month.
 
-Give the idea a one-line `title`, the evidence in `description` (counts, references, the period), the
+One idea per pattern, never one per nonconformance: two repeats of the same defect with the same leading
+cause make one idea. Before adding it, `search_ideas` for one already open on the same pattern, and add the
+new references to it with `update_idea` instead. Give the idea a one-line `title`, the evidence in `description` (counts, references, the period), the
 `linked_element_id` of the objective or KPI it serves, the NCR or 8D references in `links`, and `source`
 "internal". The review decides what becomes an initiative (`run-review-cycle`). Correcting a defect stays in
 daily management; an idea is for what the plant must get better at.

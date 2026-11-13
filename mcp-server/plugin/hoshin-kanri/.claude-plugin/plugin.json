@@ -1,7 +1,7 @@
 {
   "name": "hoshin-kanri",
   "displayName": "Hoshin Kanri X-Matrix",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Run your strategy as an X-Matrix with Claude: build the matrix, keep KPI readings and initiative sheets up to date, prepare and record reviews, and share it outside without leaking what is internal. Uses the Hoshin Kanri connector (hoshin.app).",
   "author": { "name": "Animam Technologies", "url": "https://hoshin.app" },
   "homepage": "https://hoshin.app",

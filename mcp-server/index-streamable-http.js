@@ -671,13 +671,11 @@ async function handleSetCorrelation(args, authContext) {
 }
 
 async function handleUpdateElementStatus(args, authContext) {
-  const { element_id, status, progress, current_value, notes, external_ref, period } = args;
-
   // Shared through lib/remote-tools.js: a KPI value is a reading for a period, progress
-  // and notes go to the element's update log (lib/remote-tools.js).
-  const result = await updateElementStatus(apiFor(authContext), {
-    element_id, status, progress, current_value, notes, external_ref, period
-  });
+  // and notes go to the element's update log. The arguments go on whole: a copy of
+  // listed fields dropped origin_tool, origin_ref and extracted_at from 2026-11-07 to
+  // 2026-11-13 (found by the plant-pulse trial; mcp-handler-args.test.ts).
+  const result = await updateElementStatus(apiFor(authContext), args);
   return result.error ? result : { ...result, organization: authContext.organizationName };
 }
 
