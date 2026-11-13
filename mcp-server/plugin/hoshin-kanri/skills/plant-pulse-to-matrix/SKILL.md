@@ -24,11 +24,26 @@ CAPAs into Hoshin, and never write a target: targets are decided by people, in H
    - `source_ref`: the site's Operations Command Center dashboard, its day records, the field read;
    - `data_owner`: the person who answers for the number at the site; `frequency`: "monthly".
 
-## 2. Read the period, absent is not zero
+## 2. Find the plant records
 
-The morning plant pulse stores one record per site and production day in its dashboard (key
-"site_YYYY-MM-DD"). Read the records of the production days in the period, and follow the same rules as
-the plant plugin:
+The plant plugin keeps two dashboards per site in the Claude artifact store of the account that ran it,
+each with its own database: "<Site>: Operations Command Center" (collection "pulse_days", one record per
+production day, key "<Site>_YYYY-MM-DD") and "<Site>: Quality Register" (collection "ncrs", one record per
+nonconformance, key "<Site>_<NCR ref>").
+
+1. Find the dashboard: the Dashboards block of the plant's Open work page first, then the `Artifact` tool,
+   action list, matching the exact title.
+2. Read its records with the `ArtifactData` tool, action query or list, on that dashboard and collection.
+   Keep the keys of the period's production days.
+3. The dashboards are private to the account that ran the plant plugin. Run this skill in that account,
+   or have the dashboard shared with the person who runs it; whether a shared dashboard's records can be
+   read from another account has not been checked.
+4. If this session has no artifact tools, or no dashboard is found, do not estimate: ask the person for
+   the morning reports or the exports of the period, and say the reading rests on them.
+
+## 3. Read the period, absent is not zero
+
+Follow the same rules as the plant plugin:
 
 - A record with "data_complete" false, or a field that is null, is a gap, never a zero and never 1.0.
 - Ratios (oee, availability, performance, quality): mean over the complete days where the field is not
@@ -42,7 +57,7 @@ the plant plugin:
   reading. Keep the currency as given.
 - A day with "output_provisional" true makes the output reading provisional: say so in the note.
 
-## 3. Write the reading
+## 4. Write the reading
 
 `update_element_status` on the KPI, with:
 - `current_value` in the unit of the KPI (OEE 0.712 is 71.2 when the KPI is in %);
@@ -54,10 +69,10 @@ the plant plugin:
 A month still running gives a provisional reading in Hoshin; write it again once the month is closed. If a
 reading for that period already exists, say what changes before replacing it.
 
-## 4. From recurring problems to ideas, never to initiatives
+## 5. From recurring problems to ideas, never to initiatives
 
-Read the period in the Quality Register and in the bad-actor ranking of breakdown-diagnosis. Propose an
-idea, with `add_idea`, when:
+Read the period in the Quality Register. The bad-actor ranking of breakdown-diagnosis is not stored: use
+it only when the person runs it or gives it. Propose an idea, with `add_idea`, when:
 - a nonconformance recurs and the previous fix did not hold ("recurrence", "previous_fix_held" false);
 - the same leading cause comes back across several 8Ds of the period;
 - an 8D labels an action "improvement, not corrective action";
@@ -68,7 +83,7 @@ Give the idea a one-line `title`, the evidence in `description` (counts, referen
 "internal". The review decides what becomes an initiative (`run-review-cycle`). Correcting a defect stays in
 daily management; an idea is for what the plant must get better at.
 
-## 5. Evidence for the excellence roadmap
+## 6. Evidence for the excellence roadmap
 
 `get_excellence_roadmap` with the site's `matrix_id`. Some items are answered by what the plant agent keeps,
 for instance: indicators read on time (the day records and their gaps), what happens when a defect appears

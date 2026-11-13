@@ -19,7 +19,9 @@
   `show_roadmap` (one site, item by item) and `show_site_comparison` (sites side by side). `get_agenda`
   reports the roadmap items that need attention. In local mode these tools answer that the roadmap lives
   in the hosted app.
-- **Plugin 1.1.0**: the `plant-pulse-to-matrix` skill.
+- **Plugin 1.1.1**: the `plant-pulse-to-matrix` skill, which carries a plant agent's daily records (the
+  Claude for Manufacturing morning plant pulse and Quality Register, read with the Artifact and ArtifactData
+  tools) up to the site matrix.
 
 ### Security (hosted HTTP transport only)
 
