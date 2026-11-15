@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Security
+
+- Dependencies updated within their declared ranges: body-parser 1.20.9 (denial of service on a
+  malformed JSON body), proxy-addr 2.0.8, hono 4.13 and @hono/node-server (through
+  `@modelcontextprotocol/node`), zod 4.6.7, express 4.22.3. `pnpm audit` reports no known
+  vulnerability. No code change; the hosted server runs these versions since 2026-11-15.
+
 ## 4.8.1 — 2026-11-13
 
 ### Fixed
