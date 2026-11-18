@@ -422,7 +422,7 @@ Not available in local JSON mode (sovereign mode has no cloud page by design —
         },
         matrix_id: {
           type: 'string',
-          description: 'Limit indicators, initiatives and actions to one matrix (from list_matrices). Reviews and cadences are organization-wide.'
+          description: 'Limit indicators, initiatives and actions to one matrix (from list_matrices), and the last completed reviews to those of this matrix or of none. Cadences and the calendar stay organization-wide.'
         }
       }
     }

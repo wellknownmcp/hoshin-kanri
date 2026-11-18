@@ -945,7 +945,7 @@ function buildServer({ era = 'legacy' } = {}) {
           break;
         case 'get_agenda': {
           const { since, horizon_days, matrix_id } = args || {};
-          result = computeAgenda(await store.getAgendaInput(matrix_id), { now: new Date(), since, horizonDays: horizon_days });
+          result = computeAgenda(await store.getAgendaInput(matrix_id), { now: new Date(), since, horizonDays: horizon_days, matrixId: matrix_id });
           break;
         }
         case 'schedule_review':

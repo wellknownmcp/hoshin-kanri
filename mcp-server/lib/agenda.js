@@ -253,8 +253,13 @@ export function computeAgenda(input, opts) {
     }
     items.sort((x, y) => AGENDA_KINDS.indexOf(x.kind) - AGENDA_KINDS.indexOf(y.kind) || (x.date ?? '').localeCompare(y.date ?? '') || x.key.localeCompare(y.key));
     calendar.sort((x, y) => x.date.localeCompare(y.date) || x.cadenceName.localeCompare(y.cadenceName));
+    // With a matrix asked for, the reviews of that matrix and those attached to none:
+    // an organization with a committee per matrix (or per language, like the demo)
+    // otherwise handed the agent another committee's decisions (backlog #64).
+    const matrixId = opts.matrixId ?? null;
     const recentReviews = input.reviews
         .filter((r) => r.status === 'completed' && cadenceById.has(r.cadenceId))
+        .filter((r) => !matrixId || r.matrixId === null || r.matrixId === matrixId)
         .map((r) => ({ r, date: r.actualDate ?? r.scheduledDate }))
         .sort((x, y) => y.date.localeCompare(x.date))
         .slice(0, 3)

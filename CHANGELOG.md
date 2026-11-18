@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- `get_agenda` with `matrix_id`: `recentReviews` listed the last completed reviews of the whole
+  organization, so an agent working on one matrix could read another committee's decisions. They are
+  now the reviews of that matrix, or attached to none, in hosted and local mode.
+
 ### Security
 
 - Dependencies updated within their declared ranges: body-parser 1.20.9 (denial of service on a
