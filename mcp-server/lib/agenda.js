@@ -15,6 +15,7 @@ export const AGENDA_KINDS = [
     'roadmap_item_unlinked',
     'roadmap_link_closed',
     'roadmap_score_unproven',
+    'strategic_context_to_validate',
 ];
 const ROADMAP_KIND = {
     assessment_due: 'roadmap_assessment_due',
@@ -24,6 +25,12 @@ const ROADMAP_KIND = {
 };
 const DAY = 86_400_000;
 const NOTES_MAX = 500;
+/**
+ * A draft of the written frame is a proposal: after this many days without a person
+ * validating it, it is due. Declared here, below the types: the mirror of the local
+ * mode is cut from the first runtime declaration (scripts/generate-agenda-mirror.cjs).
+ */
+export const CONTEXT_DRAFT_DAYS = 7;
 const ymd = (d) => d.toISOString().slice(0, 10);
 const atDay = (s) => new Date(`${s.slice(0, 10)}T00:00:00.000Z`);
 const addDays = (s, n) => ymd(new Date(atDay(s).getTime() + n * DAY));
@@ -249,6 +256,30 @@ export function computeAgenda(input, opts) {
             summary: f.summary,
             date: f.since,
             matrixId: f.matrixId,
+        });
+    }
+    // A written frame proposed (often by an agent) and left unvalidated: it is read
+    // as a proposal by every agent until a person signs it in the app. The key
+    // carries the date of the draft: a draft rewritten waits again.
+    for (const d of input.contextDrafts ?? []) {
+        const written = new Date(d.since);
+        if (Number.isNaN(written.getTime()))
+            continue;
+        const due = new Date(written.getTime() + CONTEXT_DRAFT_DAYS * DAY);
+        if (due > opts.now)
+            continue;
+        const since = ymd(written);
+        items.push({
+            ...base,
+            key: `context_draft:${d.matrixId ?? 'purpose'}:${d.since}`,
+            kind: 'strategic_context_to_validate',
+            dueSince: iso(due),
+            subject: d.name,
+            summary: d.matrixId
+                ? `The strategic context of "${d.name}" has a draft waiting since ${since}: a person validates or discards it in the app.`
+                : `The purpose of the organization has a draft waiting since ${since}: an admin validates or discards it in the app.`,
+            date: since,
+            matrixId: d.matrixId,
         });
     }
     items.sort((x, y) => AGENDA_KINDS.indexOf(x.kind) - AGENDA_KINDS.indexOf(y.kind) || (x.date ?? '').localeCompare(y.date ?? '') || x.key.localeCompare(y.key));

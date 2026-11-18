@@ -20,6 +20,6 @@ tool.
 4. Gaps: initiatives without an `externalRef` (propose a link; the person confirms, then store it with
    `update_element_status` `external_ref`), and projects in the execution tool that serve no initiative
    (strategy drift: surface them).
-5. Weekly agenda: KPIs off target (read the direction first) and moving away from it in their recent readings
-   (`get_matrix_data`), blocked or stalled initiatives, drift, decisions waiting. One page, titled with the
-   date.
+5. Weekly agenda: KPIs off target and worsening (`get_kpi_board`: `onTarget` false, `trend` "worsening"; a
+   KPI with no `direction` has no verdict, say so rather than guess), blocked or stalled initiatives, drift,
+   decisions waiting. One page, titled with the date.

@@ -6,9 +6,14 @@ description: Build or rework a Hoshin Kanri X-Matrix in hoshin.app. Use when the
 # Build an X-Matrix
 
 The X-Matrix has four quadrants, always named this way in the tools, whatever way up a picture is drawn:
-**north** = long-term vision (3-5 years), **east** = annual objectives, **south** = initiatives,
+**north** = long-term objectives (3-5 years), **east** = annual objectives, **south** = initiatives,
 **west** = KPIs. Correlations link adjacent quadrants only (north-east, east-south, south-west, west-north):
 a KPI measures an annual objective through the initiatives that serve it.
+
+Above the lines there is a written frame, `strategicContext` in `get_matrix_data`: the **purpose** of the
+organization (why it exists, one text for all its matrices) and, per matrix, its **vision** (where it wants
+to be at the horizon), its **context** (where it starts from) and its **tradeoffs** (what it gives up). The
+lines of the north quadrant serve the vision; they are not the vision.
 
 ## Before writing
 
@@ -18,6 +23,19 @@ a KPI measures an annual objective through the initiatives that serve it.
    never put it in the wrong one.
 2. Call `list_matrices`. As soon as there is more than one, pass `matrix_id` to every tool.
 3. Read before you write: `get_matrix_data` shows what is already there. Do not duplicate elements.
+
+## The frame first
+
+1. Read `strategicContext` in `get_matrix_data`. If the organization already wrote why it exists and where
+   it wants to be, build from it and say so. A `draft` in it is a proposal nobody validated: treat it as
+   such.
+2. If it is empty, ask before you propose a single line: why does the organization exist, where does it
+   want to be at the horizon of this matrix, where does it start from, what does it give up? The person may
+   have said it already in the conversation or in a document: reuse their words.
+3. Store it with `set_strategic_context` (`purpose`, `vision`, `context`, `tradeoffs`; prose, not bullets).
+   You write a draft. Give the person the link the tool returns: a person validates it in the app, never
+   an agent. Do not wait for the validation to go on with the lines.
+4. Never invent a purpose or a vision to fill the field. An empty frame is better than yours.
 
 ## Writing
 
@@ -35,8 +53,9 @@ a KPI measures an annual objective through the initiatives that serve it.
 4. For each initiative, `upsert_initiative_sheet`: why, expected result, `measured_by` (the KPI), 3 to 6
    milestones, the next action, and a health only with its `health_note`. If an execution tool holds the
    project, set `external_ref` on the element and keep the sheet as a summary.
-5. For each KPI, `set_kpi_definition`: formula, source system and reference, data owner, frequency. Ask the
-   person rather than invent a formula.
+5. For each KPI, `set_kpi_definition`: formula, source system and reference, data owner, frequency, and
+   `direction` (`up` when higher is better, `down` when lower is better). Ask the person rather than invent a
+   formula. Without a direction the indicator board (`get_kpi_board`) gives no verdict on the KPI.
 
 ## Check and show
 

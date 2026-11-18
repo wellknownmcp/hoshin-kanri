@@ -7,7 +7,7 @@ completeness score, and the prompts that guide your AI agent through the
 discipline: weekly execution sync, boardroom artifacts, deployment
 diagnosis. Hoshin computes; the agent reasons; people decide.
 
-**42 tools · 9 guided prompts · 2 modes: sovereign local (this package) or hosted (`https://hoshin.app/mcp`). MCP revisions 2026-07-28 and 2025-11-25.**
+**44 tools · 9 guided prompts · 2 modes: sovereign local (this package) or hosted (`https://hoshin.app/mcp`). MCP revisions 2026-07-28 and 2025-11-25.**
 
 ## Quick start — sovereign local mode (nothing leaves your machine)
 
@@ -61,7 +61,9 @@ or later is required.
 
 ## Tools
 
-**Write:** `create_matrix` · `upsert_element` · `set_correlation` ·
+**Write:** `set_strategic_context` (the written frame above the lines:
+purpose, vision, context, tradeoffs; it writes a draft, a person validates it
+in the app) · `create_matrix` · `upsert_element` · `set_correlation` ·
 `set_matrix_parent` (group → business unit → site) ·
 `update_element_status` (status, a KPI's `current_value` with where it was
 read — `origin_tool`, `origin_ref`, `extracted_at` —, `external_ref` — link to
@@ -69,7 +71,7 @@ the Linear/Jira project) · `add_idea` · `update_idea` (triage) ·
 `upsert_initiative_sheet` (what a committee reads about an initiative: why,
 expected result, milestones, next action, health with its sentence, blockers) ·
 `set_kpi_definition` (formula, source system and reference, data owner,
-frequency) · `upsert_cadence` (create or change a review cadence)
+frequency, and `direction`: whether higher or lower is better) · `upsert_cadence` (create or change a review cadence)
 
 **Repair:** `delete_element` (a duplicate or a mistake) · `archive_matrix` ·
 `delete_matrix` (asks for the matrix's exact name; cannot be undone)
@@ -78,8 +80,10 @@ frequency) · `upsert_cadence` (create or change a review cadence)
 asked about) · `get_matrix_data` (full matrix with KPI targets and current
 values, for views and artifacts; `audience: "external"` applies the public-link
 filter for anything shown outside the organization) · `get_matrix_summary` ·
-`get_matrix_completeness` (5-metric score) · `get_cascade` (what each level
-took up, what nobody did) · `list_objectives` · `search_ideas` ·
+`get_matrix_completeness` (5-metric score) · `get_kpi_board` (every KPI month
+by month under the annual objective it measures, the readings that are due,
+and a verdict only where the KPI says which way is better) · `get_cascade`
+(what each level took up, what nobody did) · `list_objectives` · `search_ideas` ·
 `get_management_architecture` · `diagnose_theme_deployment` ·
 `suggest_meeting_for_topic` · `list_members` (who can own an element)
 

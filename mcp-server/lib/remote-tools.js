@@ -640,6 +640,7 @@ export const KPI_DEFINITION_ARGS = {
   source_ref: 'sourceRef',
   data_owner: 'dataOwner',
   frequency: 'frequency',
+  direction: 'direction',
 };
 
 export const sheetBody = (args = {}) => pick(args, SHEET_ARGS);
@@ -665,6 +666,69 @@ async function putOnElement(api, args, quadrant, body) {
 
 export async function upsertInitiativeSheet(api, args = {}) {
   return putOnElement(api, args, 'south', sheetBody(args));
+}
+
+// The written frame of a strategy (docs/sprint-contexte-strategique.md): the purpose
+// of the organization and, per matrix, vision, context and tradeoffs. An agent
+// writes a draft; a person validates it in the app.
+export const CONTEXT_ARGS = { vision: 'vision', context: 'context', tradeoffs: 'tradeoffs', visibility: 'visibility' };
+export const PURPOSE_ARGS = { purpose: 'text', purpose_label: 'label' };
+export const contextBody = (args = {}) => pick(args, CONTEXT_ARGS);
+export const purposeBody = (args = {}) => pick(args, PURPOSE_ARGS);
+
+export const CONTEXT_DRAFT_NOTE =
+  'Written as a draft: it is a proposal, not the position of the organization yet. Tell the person it waits for them, and give them the link: a draft is validated by a person, in the app, never by an agent.';
+
+// The languages a purpose can be read in: ROADMAP_LOCALES of the app (src/lib/roadmap-i18n.ts),
+// checked equal by mcp-remote-tools.test.ts. Another language is not sent: the API would
+// refuse the whole reading for a preference it cannot serve.
+export const CONTEXT_LOCALES = ['en', 'fr', 'es', 'pt', 'de', 'it', 'nl', 'pl', 'cs', 'ro', 'tr', 'zh', 'ja'];
+
+/** `lang` as the API takes it: a language it knows, or nothing. */
+export const langQuery = (lang) => (CONTEXT_LOCALES.includes(lang) ? `&lang=${lang}` : '');
+
+export const CONTEXT_UNCHANGED_NOTE =
+  'Nothing to validate: this text is already the validated one, so no draft was written.';
+
+export async function setStrategicContext(api, args = {}) {
+  const purpose = purposeBody(args);
+  const context = contextBody(args);
+  const hasPurpose = Object.keys(purpose).length > 0;
+  const hasContext = Object.keys(context).length > 0;
+  if (!hasPurpose && !hasContext) return { error: 'Nothing to change: give purpose, vision, context or tradeoffs' };
+
+  let matrix = null;
+  if (hasContext) {
+    matrix = pickMatrix(await listMatrices(api), args.matrix_id);
+    if (!matrix) return { error: args.matrix_id ? `Matrix "${args.matrix_id}" not found` : 'No X-Matrix found. Create a matrix first (create_matrix): vision, context and tradeoffs belong to a matrix.' };
+  }
+
+  const result = { status: 'draft', note: CONTEXT_DRAFT_NOTE };
+  let waiting = false;
+  if (hasPurpose) {
+    const saved = await api('/api/purpose', { method: 'PUT', body: JSON.stringify(purpose) });
+    result.purpose = saved.purpose;
+    result.validatePurposeUrl = saved.validateUrl ?? null;
+    waiting = waiting || !!saved.purpose?.draft;
+  }
+  if (hasContext) {
+    let saved;
+    try {
+      saved = await api(`/api/matrices/${matrix.id}/context`, { method: 'PUT', body: JSON.stringify(context) });
+    } catch (error) {
+      // The purpose went through: say so, or the agent would write it twice.
+      if (hasPurpose) return { ...result, error: `The draft of the purpose was saved, the sections of the matrix were not: ${error.message}` };
+      throw error;
+    }
+    result.matrixId = matrix.id;
+    result.matrixName = matrix.name;
+    result.strategicContext = saved.strategicContext;
+    result.validateUrl = saved.strategicContext?.validateUrl ?? null;
+    waiting = waiting || !!saved.strategicContext?.matrix?.draft;
+  }
+  // The API keeps no draft that says what is already validated: do not announce one.
+  if (!waiting) return { ...result, status: 'unchanged', note: CONTEXT_UNCHANGED_NOTE };
+  return result;
 }
 
 export async function setKpiDefinition(api, args = {}) {

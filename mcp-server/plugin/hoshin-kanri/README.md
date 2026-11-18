@@ -1,7 +1,7 @@
 # Hoshin Kanri X-Matrix
 
 Run your organization's strategy as an X-Matrix with Claude, through the Hoshin Kanri connector
-([hoshin.app](https://hoshin.app)): long-term vision, annual objectives, initiatives and KPIs, the
+([hoshin.app](https://hoshin.app)): long-term objectives, annual objectives, initiatives and KPIs, the
 links between them, and the review cycle that keeps them alive.
 
 ## Install

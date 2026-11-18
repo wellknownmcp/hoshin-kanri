@@ -272,7 +272,7 @@ Ideal state: each initiative is linked to at least one result indicator AND one 
   },
   {
     name: 'get_matrix_data',
-    description: `Get the COMPLETE dataset of an X-Matrix in one call: every element of all four quadrants (id, title, status, progress, externalRef, indicator type, target and current value), each KPI's last 8 readings by period (oldest first, to read the trend), each element's last 3 progress updates with comments, all correlations (from/to element ids and titles, strength), and the completeness score.
+    description: `Get the COMPLETE dataset of an X-Matrix in one call: strategicContext (the purpose of the organization, the vision, context and tradeoffs of this matrix, the vision of the matrix above: read it first, it says why; a draft in it is a proposal nobody validated yet), then every element of all four quadrants (id, title, status, progress, externalRef, indicator type, target and current value), each KPI's last 8 readings by period (oldest first, to read the trend), each element's last 3 progress updates with comments, all correlations (from/to element ids and titles, strength), and the completeness score.
 
 Each initiative (south) carries its sheet (why, expected result, milestones, next action, health and its sentence, blockers), each KPI (west) its definition (formula, source system and reference, data owner, frequency), and each reading its status: provisional while its period runs, final once it ended.
 
@@ -290,6 +290,10 @@ Use this instead of get_matrix_summary when you need the full matrix — typical
           type: 'string',
           enum: ['internal', 'external'],
           description: 'external for anything that will be shown outside the organization (a board deck, an investor update, a partner): leaves out the elements marked internal and their correlations, every value, target, unit, link, name, reading, update and KPI definition; a sheet keeps why, the expected result, milestones, the next action and the health; the score counts what is shown. Default internal: everything.'
+        },
+        lang: {
+          type: 'string',
+          description: 'Two-letter language to read the purpose of the organization in, when it is translated (default: the language of the account).'
         }
       }
     }
@@ -298,7 +302,7 @@ Use this instead of get_matrix_summary when you need the full matrix — typical
     name: 'share_matrix',
     description: `Publish a matrix as a public read-only web page and return the tokenized link. list_matrix_shares lists the existing links, revoke_matrix_share ends one.
 
-Publication is a deliberate act: anyone with the link can view the matrix (title, elements, correlations, completeness score) until the link is revoked or expires. Elements marked internal (upsert_element visibility "internal") never appear, nor their correlations; hide_figures leaves out every value, target, unit and execution link. Before publishing, mark internal what must not leave the organization (prospects, salaries, anything said in confidence). The page is never indexed by search engines. Use it to share the X-Matrix with people OUTSIDE the organization (board members, investors, partners) without creating accounts. For sharing inside a claude.ai Team organization, prefer the matrix_artifact prompt instead.
+Publication is a deliberate act: anyone with the link can view the matrix (title, elements, correlations, completeness score) until the link is revoked or expires. Elements marked internal (upsert_element visibility "internal") never appear, nor their correlations; hide_figures leaves out every value, target, unit and execution link, and the written strategic context (a vision may state a figure). Without it, the page opens with the validated sections of the strategic context marked shared (purpose and vision by default). Before publishing, mark internal what must not leave the organization (prospects, salaries, anything said in confidence). The page is never indexed by search engines. Use it to share the X-Matrix with people OUTSIDE the organization (board members, investors, partners) without creating accounts. For sharing inside a claude.ai Team organization, prefer the matrix_artifact prompt instead.
 
 Not available in local JSON mode (sovereign mode has no cloud page by design — export a snapshot artifact instead).`,
     inputSchema: {
@@ -592,6 +596,25 @@ Use it to answer "is our group strategy actually deployed in the sites?", to pre
     }
   },
   {
+    name: 'get_kpi_board',
+    description: `Read the indicator board of a matrix: every KPI month by month, grouped under the annual objective it measures (through the projects it is linked to). The table a review opens with, and the one the people see in the app (pageUrl).
+
+For each indicator: its target for the year, its last readings (cells), the trend, and onTarget. Read it this way:
+- a cell with state "missing" is a reading that is due and absent: the last closed month, or the last closed quarter for a quarterly indicator (the cell is then the month that closes it). Take it or ask for it with update_element_status, passing period explicitly: that month (YYYY-MM), or the quarter (YYYY-Qn) for a quarterly indicator. The default period of update_element_status is the running quarter, which would not fill it;
+- trend compares the latest reading with the one before it, month with month or quarter with quarter. "improving" or "worsening", and onTarget true or false, exist only when the indicator says which way is better;
+- when onTarget is null, noVerdict says why: "no_direction" (ask which way is better and record it with set_kpi_definition direction; do not call the trend good or bad yourself), "no_target", "not_a_number" (the target or the reading is not a plain number, e.g. "≥ 95" or "1,250": propose to rewrite it), "stale" (the latest reading is older than the months shown), "no_reading";
+- a group whose rows are empty is an annual objective nothing measures; the group whose objective is null holds the indicators tied to no objective. Both are worth raising.
+pageUrl is the same board as a page of the hosted app, for the people (absent in local mode, which also has no owner names).
+There is one target per indicator, for the year, not one per month.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        matrix_id: { type: 'string', description: 'UUID of the matrix (default: the organization default matrix)' },
+        months: { type: 'integer', minimum: 3, maximum: 12, description: 'How many closed months to go back at most (default 6)' }
+      }
+    }
+  },
+  {
     name: 'set_matrix_parent',
     description:
       'Attach an existing matrix under the matrix of the level above (business unit under group, site under business unit), or detach it with an empty parent_matrix_id. Links from its elements to the old parent are cleared. Refused if it would create a loop or a fifth level.',
@@ -723,9 +746,35 @@ Use it to answer "is our group strategy actually deployed in the sites?", to pre
     }
   },
   {
+    name: 'set_strategic_context',
+    description:
+      'Propose the written frame of the strategy: why the organization exists (purpose, one text for all its matrices) and, for a matrix, where it wants to be (vision), where it starts from (context) and what it chose and gave up (tradeoffs). Prose, in the words of the leadership, not bullet lines: the lines are the matrix. Ask the person before you write, and write what they said; do not invent a purpose. You write a DRAFT: it becomes the position of the organization only when a person validates it in the app, at the link returned, so give them that link. Each field given replaces, null clears, fields not given are kept. Read the current frame first in get_matrix_data (strategicContext). Vision and purpose are meant to be shared outside once validated; context and tradeoffs stay internal unless visibility says otherwise.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        matrix_id: { type: 'string', description: 'UUID of the matrix whose vision, context and tradeoffs you write (default: the default matrix). Not needed for the purpose alone.' },
+        purpose: { type: ['string', 'null'], maxLength: 3000, description: 'Why the organization exists, written out. It holds across cycles and for every matrix.' },
+        purpose_label: { type: ['string', 'null'], maxLength: 60, description: 'What the organization calls it: "Purpose", "Mission", "Raison d\'être"…' },
+        vision: { type: ['string', 'null'], maxLength: 4000, description: 'Where the organization (or this site) wants to be at the horizon of the matrix.' },
+        context: { type: ['string', 'null'], maxLength: 4000, description: 'Where it starts from, what changed, what makes this cycle necessary.' },
+        tradeoffs: { type: ['string', 'null'], maxLength: 4000, description: 'What was chosen, and what was given up.' },
+        visibility: {
+          type: 'object',
+          description: 'Per section of the matrix: "shared" may be shown outside once validated, "internal" stays with members. Defaults: vision shared, context and tradeoffs internal.',
+          properties: {
+            vision: { type: 'string', enum: ['shared', 'internal'] },
+            context: { type: 'string', enum: ['shared', 'internal'] },
+            tradeoffs: { type: 'string', enum: ['shared', 'internal'] }
+          },
+          additionalProperties: false
+        }
+      }
+    }
+  },
+  {
     name: 'set_kpi_definition',
     description:
-      'Define a KPI (west element): how its value is computed, in which system and where it is read, who answers for the number, how often a reading is due. Read it before taking a reading, so every agent computes the KPI the same way. Each field given replaces the stored one, null clears it, fields not given are kept.',
+      'Define a KPI (west element): how its value is computed, in which system and where it is read, who answers for the number, how often a reading is due, and which way is better. Read it before taking a reading, so every agent computes the KPI the same way. Each field given replaces the stored one, null clears it, fields not given are kept.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -734,7 +783,9 @@ Use it to answer "is our group strategy actually deployed in the sites?", to pre
         source_system: { type: ['string', 'null'], description: 'The system the value is read in (e.g. "HubSpot", "Pennylane")' },
         source_ref: { type: ['string', 'null'], description: 'Where in it: a report, a saved query, a URL' },
         data_owner: { type: ['string', 'null'], description: 'Who answers for the number' },
-        frequency: { type: ['string', 'null'], enum: ['monthly', 'quarterly', null], description: 'How often a reading is due' }
+        frequency: { type: ['string', 'null'], enum: ['monthly', 'quarterly', null], description: 'How often a reading is due' },
+        // Must stay identical to KPI_DIRECTIONS in src/lib/element-sheets.ts.
+        direction: { type: ['string', 'null'], enum: ['up', 'down', null], description: 'Which way is better: "up" (higher is better: revenue, on-time delivery) or "down" (lower is better: defects, lead time). Ask the person when it is not obvious. Without it the indicator board cannot say whether a trend is good or whether the target is met.' }
       },
       required: ['element_id']
     }
@@ -960,6 +1011,7 @@ const READ_ONLY = new Set([
   'get_matrix_data',
   'get_matrix_completeness',
   'get_cascade',
+  'get_kpi_board',
   'search_ideas',
   'get_management_architecture',
   'diagnose_theme_deployment',
@@ -1003,6 +1055,7 @@ export const TOOL_TITLES = {
   create_matrix: 'Create a matrix',
   upsert_element: 'Add or edit an element',
   get_cascade: 'Get cascade report',
+  get_kpi_board: 'Get indicator board',
   set_matrix_parent: 'Set parent matrix',
   set_correlation: 'Set a correlation',
   show_matrix: 'Show the X-Matrix',
@@ -1010,6 +1063,7 @@ export const TOOL_TITLES = {
   upsert_cadence: 'Add or edit a cadence',
   upsert_initiative_sheet: 'Edit an initiative sheet',
   set_kpi_definition: 'Set a KPI definition',
+  set_strategic_context: 'Propose the strategic context',
   get_excellence_roadmap: 'Get excellence roadmap',
   assess_roadmap_item: 'Assess a roadmap item',
   show_roadmap: 'Show a site roadmap',

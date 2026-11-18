@@ -6,6 +6,7 @@
 export const HEALTHS = ['green', 'amber', 'red'];
 export const MILESTONE_STATUSES = ['planned', 'done', 'late'];
 export const KPI_FREQUENCIES = ['monthly', 'quarterly'];
+export const KPI_DIRECTIONS = ['up', 'down'];
 export const MAX_MILESTONES = 8;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -33,7 +34,7 @@ function strictKeys(obj, allowed, name) {
 const TEXT_FIELDS = { sponsor: 100, why: 2000, expectedResult: 1000, healthNote: 500, blockers: 2000, resources: 1000 };
 const SHEET_KEYS = ['sponsor', 'why', 'expectedResult', 'measuredBy', 'milestones', 'nextAction', 'health', 'healthNote', 'blockers', 'resources'];
 const KPI_TEXT = { formula: 1000, sourceSystem: 100, sourceRef: 500, dataOwner: 100 };
-const KPI_KEYS = [...Object.keys(KPI_TEXT), 'frequency'];
+const KPI_KEYS = [...Object.keys(KPI_TEXT), 'frequency', 'direction'];
 
 function optionalDay(value, name) {
   if (value === undefined || value === null) return { value };
@@ -115,6 +116,11 @@ export function mergeKpiDefinition(current, patch) {
     if (v === null) { delete next[k]; continue; }
     if (k === 'frequency') {
       if (!KPI_FREQUENCIES.includes(v)) return { ok: false, code: 'VALIDATION_ERROR', message: `frequency must be one of ${KPI_FREQUENCIES.join(', ')}` };
+      next[k] = v;
+      continue;
+    }
+    if (k === 'direction') {
+      if (!KPI_DIRECTIONS.includes(v)) return { ok: false, code: 'VALIDATION_ERROR', message: `direction must be one of ${KPI_DIRECTIONS.join(', ')}` };
       next[k] = v;
       continue;
     }

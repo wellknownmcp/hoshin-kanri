@@ -27,7 +27,7 @@ import path from 'node:path';
 
 import { tools, getQuadrantLabel } from './lib/tool-definitions.js';
 import { promptsList, getPromptMessages } from './lib/prompt-definitions.js';
-import { elementBody, ideaUpdateBody, currentQuarter, comparePeriods, PERIOD_PATTERN, deletionConfirmed, readingOrigin, IMAGE_NOTE, sheetBody, kpiDefinitionBody, cadenceBody, readingStatus } from './lib/remote-tools.js';
+import { elementBody, ideaUpdateBody, currentQuarter, comparePeriods, PERIOD_PATTERN, deletionConfirmed, readingOrigin, IMAGE_NOTE, sheetBody, kpiDefinitionBody, contextBody, purposeBody, cadenceBody, readingStatus } from './lib/remote-tools.js';
 import { renderInitiativeSheetSvg, renderXMatrixSvg } from './lib/xmatrix-svg.js';
 import { externalMatrix } from './lib/external-view.js';
 import { toolResult, viewPayload } from './lib/matrix-view.js';
@@ -192,6 +192,7 @@ async function handleGetMatrixSummary(args) {
       west: matrix.elements?.west?.length || 0
     },
     correlationsCount: matrix.correlations?.length || 0,
+    strategicContext: await store.getStrategicContext(matrix.id),
     ideasOverview: summary.overview,
     aiContext: summary.aiPromptContext
   };
@@ -207,8 +208,34 @@ async function handleGetMatrixSummary(args) {
   return result;
 }
 
+/**
+ * Local mode has no validation step (no app, one user): what is written is the
+ * position at once, and the answer says so.
+ */
+async function handleSetStrategicContext(args) {
+  const purpose = purposeBody(args);
+  const context = contextBody(args);
+  const hasContext = Object.keys(context).length > 0;
+  if (Object.keys(purpose).length === 0 && !hasContext) return { error: 'Nothing to change: give purpose, vision, context or tradeoffs' };
+  // Like the hosted tool: a matrix is needed for its sections only, and without
+  // matrix_id it is the default one if active, else the first active one.
+  let matrix = null;
+  if (hasContext) {
+    const rows = await orderedMatrices();
+    matrix = args.matrix_id
+      ? rows.map(r => r.matrix).find(m => m && m.id === args.matrix_id)
+      : rows.map(r => r.matrix).find(m => m && m.isActive !== false);
+    if (!matrix) return { error: args.matrix_id ? `Matrix "${args.matrix_id}" not found` : 'No X-Matrix found. Create a matrix first (create_matrix): vision, context and tradeoffs belong to a matrix.' };
+  }
+  const strategicContext = await store.setStrategicContext({ matrixId: matrix?.id ?? null, context, purpose });
+  const note = 'Local mode: there is no app and no validation step, so this text is the position at once. In the hosted app an agent writes a draft and a person validates it.';
+  // The purpose alone: the same keys as the hosted tool, no matrix in the answer.
+  if (!matrix) return { status: 'saved', note, purpose: strategicContext.purpose };
+  return { status: 'saved', note, matrixId: matrix.id, matrixName: matrix.name, strategicContext, ...(Object.keys(purpose).length > 0 && { purpose: strategicContext.purpose }) };
+}
+
 async function handleGetMatrixData(args) {
-  const { matrix_id, audience = 'internal' } = args;
+  const { matrix_id, audience = 'internal', lang } = args;
   if (!['internal', 'external'].includes(audience)) return { error: 'audience must be "internal" or "external"' };
 
   const matrices = (await orderedMatrices()).map(r => r.matrix);
@@ -236,6 +263,7 @@ async function handleGetMatrixData(args) {
       owner: matrix.owner,
       parentMatrixId: matrix.parentMatrixId ?? null
     },
+    strategicContext: await store.getStrategicContext(matrix.id, { external: audience === 'external', lang }),
     quadrantLabels: {
       north: getQuadrantLabel('north'),
       east: getQuadrantLabel('east'),
@@ -346,6 +374,17 @@ async function handleUpsertElement(args) {
         : `Element "${element.title}" updated`,
       element,
     };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
+async function handleGetKpiBoard(args) {
+  if (args.months !== undefined && !(Number.isInteger(args.months) && args.months >= 3 && args.months <= 12)) return { error: 'months must be an integer from 3 to 12' };
+  const matrixId = await resolveMatrixId(args.matrix_id);
+  if (!matrixId) return { error: 'No matrix found. Create one first with create_matrix.' };
+  try {
+    return await store.getKpiBoard(matrixId, { months: args.months });
   } catch (error) {
     return { error: error.message };
   }
@@ -919,6 +958,9 @@ function buildServer({ era = 'legacy' } = {}) {
         case 'get_cascade':
           result = await handleGetCascade(args || {});
           break;
+        case 'get_kpi_board':
+          result = await handleGetKpiBoard(args || {});
+          break;
         case 'set_matrix_parent':
           result = await handleSetMatrixParent(args || {});
           break;
@@ -977,6 +1019,9 @@ function buildServer({ era = 'legacy' } = {}) {
           break;
         case 'get_review':
           result = args?.review_id ? await store.getReview(args.review_id) : { error: 'review_id is required' };
+          break;
+        case 'set_strategic_context':
+          result = await handleSetStrategicContext(args || {});
           break;
         case 'upsert_initiative_sheet':
           result = args?.element_id ? await store.setElementSheet(args.element_id, 'sheet', sheetBody(args)) : { error: 'element_id is required' };

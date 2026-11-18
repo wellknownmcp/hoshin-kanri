@@ -11,7 +11,9 @@ same data. For a quick look in the conversation, `show_matrix` is enough. For a 
 1. `get_matrix_data` (pass `matrix_id` when there are several matrices; `audience: "external"` if the
    cockpit will be shown outside the organization). It returns every element, the correlations with their
    strength, the KPI readings by period with their status, the initiative sheets, the KPI definitions, and
-   the completeness score. Do not use `get_matrix_summary`: it truncates.
+   the completeness score. Do not use `get_matrix_summary`: it truncates. For a table of the KPIs month by
+   month, `get_kpi_board` has the grouping by annual objective, the trend and the verdict already computed:
+   use its figures rather than recompute them.
 2. One self-contained page, no external assets. Layout around the center: north (vision) on top or at the
    bottom as the person prefers, east (annual objectives), south (initiatives), west (KPIs); the matrix name
    and score in the center.

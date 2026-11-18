@@ -6,7 +6,7 @@ objectives, initiatives, KPIs, the correlations between them, the review
 cadences that keep them alive, and a completeness score that gives a verdict
 instead of a vibe.
 
-**42 tools · 9 guided prompts · 2 transports · a Claude plugin · MCP revisions 2026-07-28 and 2025-11-25 · MIT.**
+**44 tools · 9 guided prompts · 2 transports · a Claude plugin · MCP revisions 2026-07-28 and 2025-11-25 · MIT.**
 
 Registry entry: [`io.github.wellknownmcp/hoshin-kanri`](https://registry.modelcontextprotocol.io)
 · npm: [`hoshin-kanri-mcp`](https://www.npmjs.com/package/hoshin-kanri-mcp)
@@ -119,6 +119,13 @@ The full list, grouped by what an agent does with them, is in
   internal, figures and names never leave the organization. **`export_matrix_image`** draws the matrix
   for a deck (SVG or PNG, vision at the bottom or on top); **`show_matrix`** displays it in the
   conversation as an MCP App.
+- **`get_kpi_board`** is the table a review opens with: every KPI month by month under the annual
+  objective it measures (through the initiatives it is linked to), a reading that is due shown as
+  missing, and a verdict — trend good or bad, target met or not — only where the KPI's definition says
+  which way is better (`set_kpi_definition` `direction`). An agent is told not to guess it.
+- **`set_strategic_context`** writes the frame above the lines of the matrix: the organization's
+  purpose, and per matrix the vision, the context and the tradeoffs. It writes a draft; a person
+  validates it in the app, and only validated text marked shared ever leaves the organization.
 - **`get_cascade`** reads a deployment across levels — a group matrix, its business units, their sites.
 
 `share_matrix` publishes a revocable, read-only public page of a matrix. It is **refused in local mode** —

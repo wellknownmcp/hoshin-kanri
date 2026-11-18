@@ -22,8 +22,11 @@ description: Prepare, run and record a strategy review in hoshin.app. Use when t
    be corrected; once the period has ended it is final.
 2. Initiatives: `update_element_status` with `progress` and `notes`; `upsert_initiative_sheet` for the next
    action and the health. The health is the owner's call: propose it, with its `health_note`.
-3. Agenda for the people: KPIs off target (read the direction first: lower is better for defects, costs,
-   lead time), initiatives at risk, decisions waiting. Keep it to one page.
+3. Agenda for the people: `get_kpi_board` gives the KPIs month by month under the annual objective each one
+   measures, with the trend and whether the target is met (`onTarget`). Bring the KPIs off target, the
+   readings still missing, the objectives nothing measures; then the initiatives at risk and the decisions
+   waiting. A KPI whose `direction` is not set has no verdict: do not judge it yourself, ask which way is
+   better and record it with `set_kpi_definition`. Give the people the board's `pageUrl`. Keep it to one page.
 4. No review scheduled: propose a date, and once a person agrees, `schedule_review`.
 
 ## After the review

@@ -1,6 +1,25 @@
 # Changelog
 
-## Unreleased
+## 4.10.0 — 2026-11-18 (since 4.8.1)
+
+### Added
+
+- **Indicator board**: `get_kpi_board` reads every KPI of a matrix month by month, grouped under the
+  annual objective it measures through the initiatives it is linked to. A reading due for the last
+  closed period and absent is a cell of its own (`missing`); an objective nothing measures and a KPI
+  tied to no objective both show. Hosted and local mode (the local mode has no directory of people, so
+  no owner name).
+- `set_kpi_definition` takes `direction` (`up` when higher is better, `down` when lower is better). The
+  board gives a verdict — trend improving or worsening, target met or not — only with it; without it the
+  trend is "up" or "down" and the tool tells the agent to ask rather than guess.
+- **Written frame of a strategy** (4.9.0): `set_strategic_context` writes the organization's purpose and,
+  per matrix, the vision, the context and the tradeoffs. It writes a draft and returns the link where a
+  person validates it; validation happens in the app, never through a token. `get_matrix_data` and
+  `get_matrix_summary` return `strategicContext`; an external reading only carries validated text marked
+  shared. `get_agenda` reports a draft waiting for more than seven days
+  (`strategic_context_to_validate`). The local mode has no validation step and says so.
+- Plugin 1.3.0: the skills use the board for a review agenda and a weekly sync, record the direction of
+  a KPI when they define it, and start a matrix with its written frame.
 
 ### Fixed
 

@@ -8,8 +8,10 @@ import { getPromptMessages } from './prompt-definitions.js';
 
 const TOPICS = {
   overview: `Hoshin Kanri keeps an organization's strategy as an X-Matrix and runs its review cycle.
-The matrix has four quadrants, named as upsert_element and list_objectives name them: north = long-term vision
-(3-5 years), east = annual objectives, south = initiatives, west = KPIs. How a picture of the matrix is turned
+The matrix has four quadrants, named as upsert_element and list_objectives name them: north = long-term objectives
+(3-5 years), east = annual objectives, south = initiatives, west = KPIs.
+Above the lines there is a written frame, strategicContext in get_matrix_data: the purpose of the organization
+(why it exists) and, per matrix, its vision, context and tradeoffs. Read it before the lines: it says why. How a picture of the matrix is turned
 on the page does not change these names. Correlations link adjacent quadrants only
 (north-east, east-south, south-west, west-north); a KPI measures an objective through the initiatives that serve it.
 Start a session with whoami (who you act as, what you may do), then list_matrices, then get_agenda
@@ -23,7 +25,8 @@ Start a session with whoami (who you act as, what you may do), then list_matrice
    It keeps a snapshot of the matrix as it stands then: record before correcting figures. get_review reads it back.
 4. No review scheduled: schedule_review with the date get_agenda expects (a second call the same day is refused, MEETING_ALREADY_SCHEDULED).
 Heartbeat agents: pass since (the time of your previous call) to get_agenda, so you never act twice on the same item.
-Building a matrix: create_matrix, then upsert_element per quadrant, then set_correlation between adjacent quadrants; get_matrix_completeness scores it.
+Building a matrix: first the frame (ask the person why the organization exists and where it wants to be, then
+set_strategic_context), then create_matrix if there is none, then upsert_element per quadrant, then set_correlation between adjacent quadrants; get_matrix_completeness scores it.
 get_help topic "modeling" says how to fill it well. Owners: list_members gives the ids for owner_id; inviting a person is done in the app by an admin.
 Initiatives: upsert_initiative_sheet (why, expected result, milestones, next action, health with its sentence, blockers).
 KPIs: set_kpi_definition (formula, source system and reference, data owner, frequency), read it before every reading.
@@ -41,7 +44,9 @@ so you never decide alone what may leave. Each initiative has a page (pageUrl), 
 For a deck: export_matrix_image (audience "external" leaves out internal elements and every figure; layout "initiatives"
 gives one page per initiative sheet). It returns SVG; format "png" returns the pictures as images, for Google Slides.
 Weekly sync with an execution tool (Linear, Jira): the prompt weekly_sync. Ideas from the field: add_idea, then update_idea to triage.
-Groups and sites: get_cascade, set_matrix_parent.`,
+Groups and sites: get_cascade, set_matrix_parent.
+The numbers at a glance: get_kpi_board (every KPI month by month under the annual objective it measures, readings that are due,
+and a verdict only where the indicator says which way is better: set_kpi_definition direction).`,
   heartbeat: `A recurring agent (a scheduled task, a heartbeat) does this at each pass:
 whoami once, then get_agenda with since = the time of its previous pass. For each item, by kind:
 - review_upcoming: prepare it. Take the readings that are due (see kpi_reading_missing), update the initiatives,
@@ -52,6 +57,9 @@ whoami once, then get_agenda with since = the time of its previous pass. For eac
 - kpi_reading_missing: read the KPI's definition (get_matrix_data, kpiDefinition), take the value where it
   says, then update_element_status with current_value, period, origin_tool, origin_ref, extracted_at. Alone: yes.
   A reading of an open period is provisional and may be corrected; once its period has ended it is final.
+- strategic_context_to_validate: a draft of the written frame (purpose, vision, context, tradeoffs) has waited more
+  than a week. Remind the person who can validate it and give them the link (validateUrl in get_matrix_data,
+  strategicContext). Alone: the reminder only. You cannot validate, and you do not rewrite a draft to restart the wait.
 - roadmap_assessment_due, roadmap_item_unlinked, roadmap_link_closed, roadmap_score_unproven: gaps of the
   excellence roadmap (get_excellence_roadmap, "findings"). Signal them to the person who owns the site: a
   site to assess again, an item under its target with no initiative or with a closed one, a score with no
@@ -65,6 +73,12 @@ whoami once, then get_agenda with since = the time of its previous pass. For eac
 Write what you did in one short message to the people concerned. Keep your schedule, your since cursor and your
 collection recipe in your own configuration: they are how you work, not the strategy.`,
   modeling: `Filling a matrix well:
+- Start from the written frame (strategicContext in get_matrix_data). If it is empty, ask the person for it before
+  you propose a single line, and store what they said with set_strategic_context: purpose (why the organization
+  exists), vision (where it wants to be at the horizon), context (where it starts from), tradeoffs (what it gives up).
+  You write a draft; a person validates it in the app, at the link the tool returns. A draft is a proposal: never
+  present it as the position of the organization, and never as validated. North lines are long-term objectives
+  that serve the vision, not the vision itself.
 - 3 to 5 elements per quadrant: fewer leaves the strategy vague, more dilutes it (the completeness score counts it).
 - Correlation strength: strong = the initiative is designed for this objective, or the KPI measures it directly;
   medium = it contributes clearly but is not the main lever; weak = an indirect or partial effect. No link rather than a weak one
@@ -140,6 +154,6 @@ export function localCapabilityReport(args = {}) {
 }
 
 /** Sent at initialization: clients put it in the model's context without a tool call. */
-export const SERVER_INSTRUCTIONS = `Hoshin Kanri keeps the organization's strategy as an X-Matrix (north: long-term vision, east: annual objectives, south: initiatives, west: KPIs) and runs its review cycle.
+export const SERVER_INSTRUCTIONS = `Hoshin Kanri keeps the organization's strategy as an X-Matrix (north: long-term objectives, east: annual objectives, south: initiatives, west: KPIs) and runs its review cycle. Above the lines, a written frame says why: the purpose of the organization and the vision, context and tradeoffs of each matrix (strategicContext in get_matrix_data; set_strategic_context proposes a draft a person validates in the app).
 Start with whoami (who you act as, what you may change), then list_matrices, then get_agenda (today's date and what is due before the next review). get_help explains workflows, rights and error codes.
 Read before you write. People decide; you prepare, update readings and progress, and record what the review decided (record_review). If something you need does not exist, use report_missing_capability.`;

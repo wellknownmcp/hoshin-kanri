@@ -17,7 +17,7 @@ import { tools, getQuadrantLabel } from './lib/tool-definitions.js';
 import { VERSION } from './lib/version.js';
 import { assertSafeEndpoint } from './lib/safe-endpoint.js';
 import { registerAgendaResource } from './lib/agenda-resource.js';
-import { apiErrorMessage, listMatrices, pickMatrix, findElement, elementBody, ideaUpdateBody, updateElementStatus, managementArchitecture, diagnoseThemeDeployment, suggestMeetingForTopic, getAgenda, scheduleReview, recordReview, getExcellenceRoadmap, assessRoadmapItem, getRoadmapTranslation, translateRoadmap, showRoadmap, compareSites, whoami, reportMissingCapability, archiveMatrix, deleteMatrix, deleteElement, exportMatrixImage, getReview, upsertInitiativeSheet, setKpiDefinition, upsertCadence, listMembers, showMatrix } from './lib/remote-tools.js';
+import { apiErrorMessage, listMatrices, pickMatrix, findElement, elementBody, ideaUpdateBody, updateElementStatus, managementArchitecture, diagnoseThemeDeployment, suggestMeetingForTopic, getAgenda, scheduleReview, recordReview, getExcellenceRoadmap, assessRoadmapItem, getRoadmapTranslation, translateRoadmap, showRoadmap, compareSites, whoami, reportMissingCapability, archiveMatrix, deleteMatrix, deleteElement, exportMatrixImage, getReview, upsertInitiativeSheet, setKpiDefinition, setStrategicContext, langQuery, upsertCadence, listMembers, showMatrix } from './lib/remote-tools.js';
 import { toolResult } from './lib/matrix-view.js';
 import { getHelp, SERVER_INSTRUCTIONS } from './lib/help.js';
 import { allowedOrigins, originAllowed } from './lib/origin.js';
@@ -385,6 +385,8 @@ async function handleGetMatrixSummary(args, authContext) {
       west: matrix.elements?.west?.length || 0
     },
     correlationsCount: matrix.correlations?.length || 0,
+    // Why and where to, written out: read it before the lines (set_strategic_context writes it).
+    strategicContext: matrix.strategicContext ?? null,
     ideasOverview: ideasSummary.overview,
     aiContext: ideasSummary.aiPromptContext
   };
@@ -401,7 +403,7 @@ async function handleGetMatrixSummary(args, authContext) {
 }
 
 async function handleGetMatrixData(args, authContext) {
-  const { matrix_id, audience = 'internal' } = args;
+  const { matrix_id, audience = 'internal', lang } = args;
   if (!['internal', 'external'].includes(audience)) return { error: 'audience must be "internal" or "external"' };
   // External: the API applies the filter of lib/external-view.ts (docs/sprint-pages-de-repli.md).
   const aud = audience === 'external' ? '&audience=external' : '';
@@ -411,7 +413,7 @@ async function handleGetMatrixData(args, authContext) {
     'X-Organization-Id': authContext.organizationId
   };
 
-  const result = await callAPI(`/api/exports/matrices?include=elements,correlations${aud}`, { headers });
+  const result = await callAPI(`/api/exports/matrices?include=elements,correlations${aud}${langQuery(lang)}`, { headers });
   const matrices = Array.isArray(result.data) ? result.data : [result.data];
   const matrix = pickMatrix(matrices, matrix_id);
 
@@ -438,6 +440,9 @@ async function handleGetMatrixData(args, authContext) {
       owner: matrix.owner,
       parentMatrixId: matrix.parentMatrixId ?? null
     },
+    // The written frame: purpose of the organization, vision, context and tradeoffs of
+    // this matrix, the vision of the matrix above. `draft` is a proposal nobody validated.
+    strategicContext: matrix.strategicContext ?? null,
     quadrantLabels: {
       north: getQuadrantLabel('north'),
       east: getQuadrantLabel('east'),
@@ -606,6 +611,19 @@ async function handleGetCascade(args, authContext) {
   if (!matrixId) return { error: 'No matrix found. Create one first with create_matrix.' };
   const cascade = await callAPI(`/api/matrices/${matrixId}/cascade`, { headers });
   return { ...cascade, organization: authContext.organizationName };
+}
+
+async function handleGetKpiBoard(args, authContext) {
+  const headers = {
+    'Authorization': `Bearer ${authContext.token}`,
+    'X-Organization-Id': authContext.organizationId
+  };
+  const matrixId = await resolveMatrixId(args.matrix_id, headers);
+  if (!matrixId) return { error: 'No matrix found. Create one first with create_matrix.' };
+  if (args.months !== undefined && !(Number.isInteger(args.months) && args.months >= 3 && args.months <= 12)) return { error: 'months must be an integer from 3 to 12' };
+  const months = args.months ?? 6;
+  const board = await callAPI(`/api/matrices/${matrixId}/kpi-board?months=${months}`, { headers });
+  return { ...board, organization: authContext.organizationName };
 }
 
 async function handleSetMatrixParent(args, authContext) {
@@ -850,6 +868,9 @@ function createServer(authContext, era = 'legacy') {
         case 'get_cascade':
           result = await handleGetCascade(args || {}, authContext);
           break;
+        case 'get_kpi_board':
+          result = await handleGetKpiBoard(args || {}, authContext);
+          break;
         case 'set_matrix_parent':
           result = await handleSetMatrixParent(args || {}, authContext);
           break;
@@ -912,6 +933,9 @@ function createServer(authContext, era = 'legacy') {
           break;
         case 'set_kpi_definition':
           result = await withOrg(setKpiDefinition(apiFor(authContext), args || {}), authContext);
+          break;
+        case 'set_strategic_context':
+          result = await withOrg(setStrategicContext(apiFor(authContext), args || {}), authContext);
           break;
         case 'upsert_cadence':
           result = await withOrg(upsertCadence(apiFor(authContext), args || {}), authContext);

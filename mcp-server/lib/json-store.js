@@ -12,8 +12,10 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { computeCompleteness } from './completeness.js';
 import { analyzeCascade, ancestorsOf, parentLinkError } from './cascade.js';
+import { buildKpiBoard } from './kpi-board.js';
 import { latestReading, readingStatus } from './remote-tools.js';
 import { mergeKpiDefinition, mergeSheet } from './element-sheets.js';
+import { externalMatrixContext, externalPurpose, matrixContextView, patchMatrixDraft, patchPurposeDraft, publishedMatrixContext, purposeView, readMatrixContext, validateMatrixContext, validatePurpose } from './strategic-context.js';
 
 const PARENT_LINK_MESSAGES = {
   SELF_PARENT: 'A matrix cannot be its own parent',
@@ -511,6 +513,93 @@ export function createJsonStore(config) {
     });
   }
 
+  // ============================================
+  // STRATEGIC CONTEXT (purpose, vision, context, tradeoffs)
+  // ============================================
+
+  const failed = (r) => new Error(`${r.code}: ${r.message}`);
+
+  /**
+   * The written frame of a strategy, same rules as the hosted app
+   * (lib/strategic-context.js is generated from it). One difference, by nature:
+   * there is no app here and one user, so there is no validation step. What is
+   * written is the position at once.
+   */
+  async function setStrategicContext({ matrixId, context = {}, purpose = {} }) {
+    const now = new Date();
+    if (Object.keys(purpose).length > 0) {
+      await withLock('config', async () => {
+        const cfg = (await readJSON(configPath)) ?? {};
+        const drafted = patchPurposeDraft(cfg.purpose, purpose, { by: null, at: now, origin: 'agent' });
+        if (!drafted.ok) throw failed(drafted);
+        const signed = drafted.value.draft ? validatePurpose(drafted.value, { by: null, at: now }) : drafted;
+        if (!signed.ok) throw failed(signed);
+        cfg.purpose = signed.value;
+        await writeJSON(configPath, cfg);
+      });
+    }
+    if (Object.keys(context).length > 0) {
+      await withLock(`matrix:${matrixId}`, async () => {
+        const matrix = await getMatrix(matrixId);
+        if (!matrix) throw new Error(`Matrix ${matrixId} not found`);
+        const drafted = patchMatrixDraft(matrix.context, context, { by: null, at: now, origin: 'agent' });
+        if (!drafted.ok) throw failed(drafted);
+        const signed = drafted.value.draft ? validateMatrixContext(drafted.value, { by: null, at: now }) : drafted;
+        if (!signed.ok) throw failed(signed);
+        matrix.context = signed.value;
+        matrix.updatedAt = now.toISOString();
+        await saveMatrix(matrix);
+      });
+    }
+    return getStrategicContext(matrixId);
+  }
+
+  /** Outside, as the hosted app answers: what is not shown says nothing about itself. */
+  function externalSections(raw, validatedAt) {
+    const shown = externalMatrixContext(raw);
+    const any = !!(shown.vision || shown.context || shown.tradeoffs);
+    return {
+      ...shown,
+      visibility: { vision: shown.vision ? 'shared' : 'internal', context: shown.context ? 'shared' : 'internal', tradeoffs: shown.tradeoffs ? 'shared' : 'internal' },
+      validatedAt: any ? validatedAt : null,
+      validatedByName: null,
+      draft: null,
+    };
+  }
+
+  /** Same shape as the hosted export gives; names and the app link do not exist here. */
+  async function getStrategicContext(matrixId, { external = false, lang } = {}) {
+    const cfg = (await readJSON(configPath)) ?? {};
+    const locales = [lang];
+    const shown = external ? externalPurpose(cfg.purpose, locales) : null;
+    const { validatedBy: _purposeBy, draft: _purposeDraft, ...purpose } = purposeView(cfg.purpose, locales);
+    const purposeOut = external
+      ? {
+          ...purpose,
+          label: shown?.label ?? null,
+          text: shown?.text ?? null,
+          locale: shown?.locale ?? null,
+          sourceLocale: shown ? purpose.sourceLocale : null,
+          visibility: shown ? 'shared' : 'internal',
+          validatedAt: shown ? purpose.validatedAt : null,
+          validatedByName: null,
+          translations: [],
+          draft: null,
+        }
+      : { ...purpose, validatedByName: null, draft: null };
+    const matrix = matrixId ? await getMatrix(matrixId) : null;
+    // No matrix asked for (the purpose alone): the caller reads `purpose` only.
+    if (!matrix) return { purpose: purposeOut, matrix: null, parent: null, validateUrl: null };
+    const { validatedBy: _by, draft: _draft, ...sections } = matrixContextView(matrix.context);
+    const parent = !external && matrix.parentMatrixId ? await getMatrix(matrix.parentMatrixId) : null;
+    return {
+      purpose: purposeOut,
+      matrix: external ? externalSections(matrix.context, sections.validatedAt) : { ...sections, validatedByName: null, draft: null },
+      parent: parent ? { matrixId: parent.id, matrixName: parent.name, vision: readMatrixContext(parent.context).published?.vision ?? null } : null,
+      validateUrl: null,
+    };
+  }
+
   /** A progress update (percentage, comment or both), newest last in the file. */
   async function addElementUpdate(matrixId, elementId, { progress, comment }) {
     return withLock(`matrix:${matrixId}`, async () => {
@@ -709,6 +798,40 @@ export function createJsonStore(config) {
     return { ...analysis, ancestors };
   }
 
+  /**
+   * The indicator board of a matrix, by the same rules as the hosted app
+   * (kpi-board.js is generated from src/lib/kpi-board.ts). The local mode keeps
+   * no directory of people: an owner has no name here.
+   */
+  async function getKpiBoard(matrixId, opts = {}) {
+    const matrix = await getMatrix(matrixId);
+    if (!matrix) throw new Error(`Matrix ${matrixId} not found`);
+    const live = (q) => (matrix.elements?.[q] || []).filter((el) => (el.status || 'active') !== 'cancelled');
+    const board = buildKpiBoard(
+      {
+        objectives: live('east').map((el) => ({ id: el.id, title: el.title })),
+        projectIds: live('south').map((el) => el.id),
+        kpis: live('west').map((el) => ({
+          id: el.id,
+          title: el.title,
+          unit: el.unit ?? null,
+          target: el.targetValue ?? null,
+          ownerName: null,
+          indicatorType: el.indicatorType ?? null,
+          direction: el.kpiDefinition?.direction ?? null,
+          frequency: el.kpiDefinition?.frequency ?? null,
+          createdAt: el.createdAt ?? matrix.createdAt ?? null,
+          active: (el.status || 'active') === 'active',
+          readings: (el.measurements || []).map((r) => ({ period: r.period, value: String(r.value) })),
+        })),
+        // Older stores wrote the pair in camelCase.
+        links: (matrix.correlations || []).map((c) => ({ a: c.from_element_id ?? c.fromElementId, b: c.to_element_id ?? c.toElementId, strength: c.strength })),
+      },
+      opts,
+    );
+    return { matrixId: matrix.id, matrixName: matrix.name, asOf: (opts.now ?? new Date()).toISOString(), ...board };
+  }
+
   async function findElementMatrix(elementId) {
     const matrices = await listMatrices();
     for (const matrix of matrices) {
@@ -895,7 +1018,9 @@ export function createJsonStore(config) {
       }
     }
     return {
-      version: 1,
+      version: 2,
+      // The frame of the day, as the hosted snapshot keeps it since version 2.
+      context: publishedMatrixContext(matrix.context),
       takenAt: takenAt.toISOString(),
       matrix: { id: matrix.id, name: matrix.name },
       score: computeCompleteness(matrix).score,
@@ -1059,11 +1184,14 @@ export function createJsonStore(config) {
     recordMeasurement,
     addElementUpdate,
     setElementSheet,
+    setStrategicContext,
+    getStrategicContext,
     setMatrixParent,
     archiveMatrix,
     deleteMatrix,
     deleteElement,
     getCascade,
+    getKpiBoard,
 
     // Completeness
     getCompleteness,
