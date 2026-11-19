@@ -136,7 +136,7 @@ ELEMENT_NOT_FOUND, VALIDATION_ERROR (with the invalid fields), RATE_LIMITED,
 CONFIRMATION_MISMATCH (delete_matrix: confirm_name is not the exact name), DEFAULT_MATRIX_ADMIN_ONLY (archiving or deleting the default matrix).
 If what you need does not exist, say so with report_missing_capability.`,
   local: `Local mode keeps the matrix in JSON files on this machine (HOSHIN_DATA_DIR); nothing is sent anywhere.
-The same tools work, except the public links (share_matrix, list_matrix_shares, revoke_matrix_share: no public page) and report_missing_capability (it gives you the address to file it yourself).
+The same tools work, except what involves other people: the public links (share_matrix, list_matrix_shares, revoke_matrix_share: no public page, and no page URL in the results), the excellence roadmap (it lives in the hosted app), list_members (owners are free text), the validation of the written frame (set_strategic_context writes the text at once) and report_missing_capability (it gives you the address to file it yourself).
 Rights do not apply: whoever runs the server owns the data.`,
 };
 

@@ -1,6 +1,6 @@
 ---
 name: plant-pulse-to-matrix
-description: Turn what a plant agent already produces (the morning plant pulse and Quality Register of the Claude for Manufacturing plugin, or any daily production report) into the monthly KPI readings, improvement ideas and roadmap evidence of the site's hoshin.app matrix. Use when the user asks "mets le TRS du mois dans la matrice", "monthly OEE reading from the plant pulse", "what does the quality register say for our objectives", "use the production reports as evidence for the roadmap", or when a kpi_reading_missing item points to the plant pulse.
+description: Turn what a plant agent already produces (the morning plant pulse and Quality Register of the Claude for Manufacturing plugin, or any daily production report) into the monthly KPI readings, improvement ideas and roadmap evidence of the site's Hoshin Kanri X-Matrix in hoshin.app. Use when the user asks "mets le TRS du mois dans la matrice", "monthly OEE reading from the plant pulse", "what does the quality register say for our objectives", "use the production reports as evidence for the roadmap", or when a kpi_reading_missing item points to the plant pulse.
 ---
 
 # From the plant pulse to the strategy
@@ -102,3 +102,15 @@ assessment, in the app.
 The agentic level means the team owns the practice, an agent watches it against the standard and signals
 the gaps, and people decide. A dashboard that refreshes alone is not enough: the evidence is that the
 team acts on the exceptions it shows.
+
+## Connection
+
+The tools named here come from the Hoshin Kanri MCP server. If they are not available in this session, say
+so and tell the person how to connect it. Never act as if a tool had answered: without the server, nothing
+is stored.
+
+- Hosted: add the connector `https://hoshin.app/mcp` (sign in to hoshin.app, choose the organization).
+- Local: `npx hoshin-kanri-mcp` keeps the matrices in JSON files on the machine and sends nothing
+  anywhere. What involves other people exists only in the hosted app, and the tools say so when called:
+  public links and page URLs, the directory of members (owners are free text), the validation of the
+  written frame by a person, the excellence roadmap, and the sending of a missing-capability report.

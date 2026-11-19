@@ -37,7 +37,9 @@ ideas and roadmap evidence.
   `wellknownmcp/hoshin-kanri`, then add **Hoshin Kanri X-Matrix** and connect its **hoshin** connector.
 - **Claude Code**: `/plugin install hoshin-kanri --marketplace wellknownmcp/hoshin-kanri`
 
-Source: [`mcp-server/plugin/hoshin-kanri`](mcp-server/plugin/hoshin-kanri).
+Source: [`mcp-server/plugin/hoshin-kanri`](mcp-server/plugin/hoshin-kanri). Each skill is a folder with a
+`SKILL.md` and a README under [`skills/`](mcp-server/plugin/hoshin-kanri/skills), and can be used alone by
+any agent that reads the Agent Skills format, once the connector below (or the local mode) is added.
 
 ### Hosted mode — OAuth 2.1, nothing to install
 

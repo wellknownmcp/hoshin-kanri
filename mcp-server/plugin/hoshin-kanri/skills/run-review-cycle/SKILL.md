@@ -1,6 +1,6 @@
 ---
 name: run-review-cycle
-description: Prepare, run and record a strategy review in hoshin.app. Use when the user mentions a monthly committee, quarterly review, comité de pilotage, revue mensuelle, a KPI reading to take, initiative progress, an agenda to prepare, or "consigne les décisions", "prépare la revue", "on a eu le comité".
+description: Prepare, run and record a Hoshin Kanri strategy review in hoshin.app, the check and act of the PDCA cycle. Use when the user mentions a monthly committee, monthly business review, quarterly review, bowling chart or bowler, comité de pilotage, revue mensuelle, a KPI reading to take, initiative progress, an agenda to prepare, or "consigne les décisions", "prépare la revue", "on a eu le comité".
 ---
 
 # Run the review cycle
@@ -64,3 +64,15 @@ Army Research Institute, 1999). The four questions above are worded for a strate
 - People decide, you prepare and record.
 - A value without a source is not a reading: ask, or leave it.
 - Corrections after a review are fine (late data): the snapshot keeps what the committee saw.
+
+## Connection
+
+The tools named here come from the Hoshin Kanri MCP server. If they are not available in this session, say
+so and tell the person how to connect it. Never act as if a tool had answered: without the server, nothing
+is stored.
+
+- Hosted: add the connector `https://hoshin.app/mcp` (sign in to hoshin.app, choose the organization).
+- Local: `npx hoshin-kanri-mcp` keeps the matrices in JSON files on the machine and sends nothing
+  anywhere. What involves other people exists only in the hosted app, and the tools say so when called:
+  public links and page URLs, the directory of members (owners are free text), the validation of the
+  written frame by a person, the excellence roadmap, and the sending of a missing-capability report.

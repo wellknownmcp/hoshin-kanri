@@ -1,6 +1,6 @@
 ---
 name: coach-an-initiative
-description: Coach the owner of an initiative with five questions instead of giving the answer, in hoshin.app. Use when the user wants a coaching session on a project, a one-to-one with an initiative owner, a kata, a Toyota Kata coaching cycle, or says "coache-moi sur ce chantier", "fais le point chantier", "où j'en suis sur ce projet", "pose-moi les cinq questions".
+description: Coach the owner of a Hoshin Kanri initiative with five questions instead of giving the answer, in hoshin.app. Use when the user wants a coaching session on a project, a one-to-one with an initiative owner, a kata, a coaching kata or improvement kata cycle (Toyota Kata), or says "coach me on this project", "coache-moi sur ce chantier", "fais le point chantier", "où j'en suis sur ce projet", "pose-moi les cinq questions".
 ---
 
 # Coach an initiative
@@ -79,3 +79,15 @@ want them as data, `report_missing_capability` tells the makers of hoshin.app.
 
 Do not tell the user that "Toyota does it this way". Say that it follows the coaching kata described by
 Rother.
+
+## Connection
+
+The tools named here come from the Hoshin Kanri MCP server. If they are not available in this session, say
+so and tell the person how to connect it. Never act as if a tool had answered: without the server, nothing
+is stored.
+
+- Hosted: add the connector `https://hoshin.app/mcp` (sign in to hoshin.app, choose the organization).
+- Local: `npx hoshin-kanri-mcp` keeps the matrices in JSON files on the machine and sends nothing
+  anywhere. What involves other people exists only in the hosted app, and the tools say so when called:
+  public links and page URLs, the directory of members (owners are free text), the validation of the
+  written frame by a person, the excellence roadmap, and the sending of a missing-capability report.

@@ -1,6 +1,6 @@
 ---
 name: weekly-sync
-description: Sync the initiatives of a hoshin.app X-Matrix with the execution tool (Linear, Jira, Asana, GitHub Projects) and prepare the weekly agenda. Use when the user asks for a weekly sync, "fais le point sur les chantiers", "mets à jour l'avancement depuis Linear/Jira", or strategy drift.
+description: Sync the initiatives of a Hoshin Kanri X-Matrix in hoshin.app with the execution tool (Linear, Jira, Asana, GitHub Projects) and prepare the weekly agenda. Use when the user asks for a weekly sync, strategy to execution alignment, strategy drift, "fais le point sur les chantiers", "mets à jour l'avancement depuis Linear/Jira".
 ---
 
 # Weekly strategy and execution sync
@@ -23,3 +23,15 @@ tool.
 5. Weekly agenda: KPIs off target and worsening (`get_kpi_board`: `onTarget` false, `trend` "worsening"; a
    KPI with no `direction` has no verdict, say so rather than guess), blocked or stalled initiatives, drift,
    decisions waiting. One page, titled with the date.
+
+## Connection
+
+The tools named here come from the Hoshin Kanri MCP server. If they are not available in this session, say
+so and tell the person how to connect it. Never act as if a tool had answered: without the server, nothing
+is stored.
+
+- Hosted: add the connector `https://hoshin.app/mcp` (sign in to hoshin.app, choose the organization).
+- Local: `npx hoshin-kanri-mcp` keeps the matrices in JSON files on the machine and sends nothing
+  anywhere. What involves other people exists only in the hosted app, and the tools say so when called:
+  public links and page URLs, the directory of members (owners are free text), the validation of the
+  written frame by a person, the excellence roadmap, and the sending of a missing-capability report.

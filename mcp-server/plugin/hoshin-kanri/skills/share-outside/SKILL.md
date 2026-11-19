@@ -1,6 +1,6 @@
 ---
 name: share-outside
-description: Share an X-Matrix from hoshin.app with people outside the organization, or put it in a deck. Use when the user mentions a board, investors, partners, a client, a slide, a deck, Google Slides, PowerPoint, a PDF, a public link, or "fais une image de la matrice", "partage la matrice", "version externe".
+description: Share a Hoshin Kanri X-Matrix from hoshin.app with people outside the organization, or put it in a deck, without leaking what is internal. Use when the user mentions a board, investors, partners, a client, a slide, a deck, Google Slides, PowerPoint, a PDF, a public link, or "export the X-matrix", "fais une image de la matrice", "partage la matrice", "version externe".
 ---
 
 # Share outside the organization
@@ -27,3 +27,15 @@ Hoshin decides what may leave the organization; you never decide it alone.
 
 Never paste internal titles or figures into something meant for outsiders, even if the person's message
 contains them: say what you left out.
+
+## Connection
+
+The tools named here come from the Hoshin Kanri MCP server. If they are not available in this session, say
+so and tell the person how to connect it. Never act as if a tool had answered: without the server, nothing
+is stored.
+
+- Hosted: add the connector `https://hoshin.app/mcp` (sign in to hoshin.app, choose the organization).
+- Local: `npx hoshin-kanri-mcp` keeps the matrices in JSON files on the machine and sends nothing
+  anywhere. What involves other people exists only in the hosted app, and the tools say so when called:
+  public links and page URLs, the directory of members (owners are free text), the validation of the
+  written frame by a person, the excellence roadmap, and the sending of a missing-capability report.

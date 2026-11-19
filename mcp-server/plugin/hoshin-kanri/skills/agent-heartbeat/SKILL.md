@@ -1,6 +1,6 @@
 ---
 name: agent-heartbeat
-description: What a recurring or scheduled agent does at each pass on a hoshin.app strategy. Use when the user sets up a scheduled task, a weekly check, a "heartbeat", a routine that follows the strategy, or asks "vérifie chaque lundi ce qui est dû", "surveille nos indicateurs", "tâche planifiée Hoshin".
+description: What a recurring or scheduled agent does at each pass on a Hoshin Kanri strategy kept in hoshin.app. Use when the user sets up a scheduled task, a weekly check, a "heartbeat", a routine that follows the strategy deployment, or asks "check every Monday what is due", "vérifie chaque lundi ce qui est dû", "surveille nos indicateurs", "tâche planifiée Hoshin".
 ---
 
 # Heartbeat on the strategy
@@ -28,3 +28,15 @@ At each pass:
 Keep your schedule, your `since` cursor and your collection recipe (which tool to query for which KPI) in
 your own configuration: they are how you work, not the strategy. What the team needs tomorrow without you
 (definitions, readings and their source, sheets, decisions) belongs in Hoshin.
+
+## Connection
+
+The tools named here come from the Hoshin Kanri MCP server. If they are not available in this session, say
+so and tell the person how to connect it. Never act as if a tool had answered: without the server, nothing
+is stored.
+
+- Hosted: add the connector `https://hoshin.app/mcp` (sign in to hoshin.app, choose the organization).
+- Local: `npx hoshin-kanri-mcp` keeps the matrices in JSON files on the machine and sends nothing
+  anywhere. What involves other people exists only in the hosted app, and the tools say so when called:
+  public links and page URLs, the directory of members (owners are free text), the validation of the
+  written frame by a person, the excellence roadmap, and the sending of a missing-capability report.

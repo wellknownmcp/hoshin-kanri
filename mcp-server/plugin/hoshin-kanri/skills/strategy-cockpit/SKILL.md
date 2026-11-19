@@ -1,6 +1,6 @@
 ---
 name: strategy-cockpit
-description: Build an interactive view of the X-Matrix from hoshin.app for a leadership meeting or the team (an artifact, a cockpit, a dashboard of the strategy). Use when the user asks for a cockpit, a visual of the matrix to project, "un tableau de bord de la stratégie", "une vue de la X-Matrix pour le comité".
+description: Build an interactive view of the Hoshin Kanri X-Matrix from hoshin.app for a leadership meeting or the team (an artifact, a cockpit, a strategy dashboard). Use when the user asks for a cockpit, a visual of the matrix to project, an X-matrix dashboard, "un tableau de bord de la stratégie", "une vue de la X-Matrix pour le comité".
 ---
 
 # Strategy cockpit
@@ -28,3 +28,15 @@ same data. For a quick look in the conversation, `show_matrix` is enough. For a 
 During the meeting the person may dictate changes ("this initiative is done", "the KPI is at 1.2"): apply
 them with `update_element_status` and `upsert_initiative_sheet`, then refresh the view. Decisions go in
 `record_review` after the meeting.
+
+## Connection
+
+The tools named here come from the Hoshin Kanri MCP server. If they are not available in this session, say
+so and tell the person how to connect it. Never act as if a tool had answered: without the server, nothing
+is stored.
+
+- Hosted: add the connector `https://hoshin.app/mcp` (sign in to hoshin.app, choose the organization).
+- Local: `npx hoshin-kanri-mcp` keeps the matrices in JSON files on the machine and sends nothing
+  anywhere. What involves other people exists only in the hosted app, and the tools say so when called:
+  public links and page URLs, the directory of members (owners are free text), the validation of the
+  written frame by a person, the excellence roadmap, and the sending of a missing-capability report.

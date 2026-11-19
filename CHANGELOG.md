@@ -29,6 +29,12 @@
   expect, what happened, why the difference, what do we keep and change), answered by the participants
   and written in the notes. After the US Army after-action review (Training Circular 25-20, 1993). The
   same guidance is in `get_help` topic `workflows`.
+- Plugin 1.5.0 (2026-11-19): each skill stands alone, for agents that install a skill without the
+  plugin. Every `SKILL.md` says where its tools come from (the hosted connector or the local mode, and
+  what the local mode does not have), and every skill has a README. `build-x-matrix` uses the quadrant
+  sizes the completeness score reads, calls out an activity given as a KPI, keeps a proposal as a draft
+  until the people who carry it have answered (catchball), and comes with an example read on the demo
+  matrix. `get_help` topic `local` lists everything the local mode lacks.
 
 ### Fixed
 
