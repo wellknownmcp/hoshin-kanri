@@ -37,6 +37,28 @@ description: Prepare, run and record a strategy review in hoshin.app. Use when t
    ask when unsure. `discussed_element_ids` for what was discussed, `held_on` if not today.
 3. `get_review` reads a review and its snapshot back, even after figures were corrected.
 
+### What the period taught: four questions before closing
+
+A review that only lists figures and decisions learns nothing. Before you record it, offer the people four
+questions on the period that just ended, taken one at a time. They answer; you do not answer for them, and
+you do not rank the answers. Bring the facts first (the board of `get_kpi_board`, the decisions of the
+previous review in `get_agenda`).
+
+1. **What did we expect?** The decisions and targets of the last review, as recorded.
+2. **What happened?** The readings and the progress, as they stand. Facts, not causes yet.
+3. **Why the difference?** Where it went better as much as where it went worse. No blame: the question
+   is about the work, not the person.
+4. **What do we keep, and what do we change?** What comes out as a decision goes in `decisions`, in the
+   participants' words.
+
+Write the answers to the first three in `notes`, under the heading "What the period taught". If the
+people have no time for it, skip it and say nothing more: it is an offer, not a gate.
+
+This is the after-action review of the US Army (*A Leader's Guide to After-Action Reviews*, Training
+Circular 25-20, September 1993; Morrison and Meliza, *Foundations of the After Action Review Process*, US
+Army Research Institute, 1999). The four questions above are worded for a strategy review; the pattern
+(what was intended, what happened, why, what to sustain and what to improve) is theirs.
+
 ## Rules
 
 - People decide, you prepare and record.

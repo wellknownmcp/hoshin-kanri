@@ -23,6 +23,10 @@ Start a session with whoami (who you act as, what you may do), then list_matrice
    then prepare the agenda (get_matrix_summary, diagnose_theme_deployment).
 3. After a review: record_review with the notes, the decisions as the participants stated them, the elements discussed, and held_on.
    It keeps a snapshot of the matrix as it stands then: record before correcting figures. get_review reads it back.
+   Before closing, offer the people four questions on the period (an after-action review, US Army TC 25-20, 1993):
+   what did we expect (the last review's decisions), what happened (get_kpi_board, progress), why the difference
+   (no blame), what do we keep and what do we change. They answer, not you; the answers go in notes under
+   "What the period taught", what is decided goes in decisions. An offer, never a gate.
 4. No review scheduled: schedule_review with the date get_agenda expects (a second call the same day is refused, MEETING_ALREADY_SCHEDULED).
 Heartbeat agents: pass since (the time of your previous call) to get_agenda, so you never act twice on the same item.
 Building a matrix: first the frame (ask the person why the organization exists and where it wants to be, then

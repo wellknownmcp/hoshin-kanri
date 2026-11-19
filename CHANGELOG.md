@@ -25,6 +25,10 @@
   writes the cycle in the notes of the initiative. After the coaching kata described by Mike Rother
   (*Toyota Kata*, 2009); "kata" is his word, not an official Toyota procedure. The same guidance is in
   `get_help` topic `coaching`, for clients without the plugin.
+- Plugin 1.4.1: `run-review-cycle` offers four questions before a review is recorded (what did we
+  expect, what happened, why the difference, what do we keep and change), answered by the participants
+  and written in the notes. After the US Army after-action review (Training Circular 25-20, 1993). The
+  same guidance is in `get_help` topic `workflows`.
 
 ### Fixed
 
