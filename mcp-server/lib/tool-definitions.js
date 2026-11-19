@@ -980,7 +980,7 @@ There is one target per indicator, for the year, not one per month.`,
     inputSchema: {
       type: 'object',
       properties: {
-        topic: { type: 'string', enum: ['overview', 'workflows', 'heartbeat', 'modeling', 'prompts', 'rights', 'errors', 'local'], description: 'One topic; omit for the overview.' }
+        topic: { type: 'string', enum: ['overview', 'workflows', 'heartbeat', 'modeling', 'coaching', 'prompts', 'rights', 'errors', 'local'], description: 'One topic; omit for the overview.' }
       }
     }
   },

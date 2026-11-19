@@ -26,8 +26,9 @@ by forty years. This server exposes it over the Model Context Protocol.
 
 ### Claude plugin — the connector and the know-how in one step
 
-The plugin bundles the hosted connector with seven skills that tell Claude how to work with an X-Matrix:
-build one, run the review cycle, follow it on a schedule, share it outside without leaking what is
+The plugin bundles the hosted connector with eight skills that tell Claude how to work with an X-Matrix:
+build one, run the review cycle, coach the owner of an initiative with five questions and no answers
+given (after the coaching kata described by Mike Rother), follow it on a schedule, share it outside without leaking what is
 internal, build a cockpit, sync initiatives with Linear or Jira, and carry a plant agent's daily records
 (such as the morning plant pulse of Claude for Manufacturing) up to the site matrix as monthly readings,
 ideas and roadmap evidence.

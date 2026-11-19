@@ -45,6 +45,7 @@ For a deck: export_matrix_image (audience "external" leaves out internal element
 gives one page per initiative sheet). It returns SVG; format "png" returns the pictures as images, for Google Slides.
 Weekly sync with an execution tool (Linear, Jira): the prompt weekly_sync. Ideas from the field: add_idea, then update_idea to triage.
 Groups and sites: get_cascade, set_matrix_parent.
+A one-to-one with the owner of an initiative, by questions: get_help topic "coaching".
 The numbers at a glance: get_kpi_board (every KPI month by month under the annual objective it measures, readings that are due,
 and a verdict only where the indicator says which way is better: set_kpi_definition direction).`,
   heartbeat: `A recurring agent (a scheduled task, a heartbeat) does this at each pass:
@@ -90,6 +91,24 @@ collection recipe in your own configuration: they are how you work, not the stra
   (result or performance) and a definition (set_kpi_definition), so another agent computes it the same way.
 - Each initiative gets a sheet a committee reads in two minutes (upsert_initiative_sheet). When an execution tool
   holds the project, set external_ref, keep the tasks there and the sheet as its summary.`,
+  coaching: `Coaching the owner of an initiative: you ask five questions, the person answers. You never propose
+the solution or the next step; you bring the facts of the matrix and keep a trace of what was learned.
+Read first: get_matrix_data (the initiative's sheet: expected result, the KPI it is measured by, blockers, next
+action, last updates) and get_kpi_board (the readings of that KPI, its trend, a reading that is missing).
+Then, one question at a time, each preceded by one line of facts:
+1. What are we trying to reach? (the expected result and the KPI target; a nearer step the person names is the
+   target condition of this cycle)
+2. Where are we now? (last readings and trend; if a step was taken since last time: what was expected, what
+   happened, what was learned)
+3. What is in the way, and which obstacle are you working on now? (one only)
+4. What is your next step, and what do you expect from it?
+5. When can we see what we learned from that step? (a date)
+If the person asks what to do, give the question back or offer a fact. With their agreement, write it down in
+their words: update_element_status notes (start with "Coaching": obstacle, step, expectation, date), and
+upsert_initiative_sheet next_action; the health stays the owner's call.
+The app has no field yet for a target condition of the coming weeks nor for an experiment and its result: they
+live in the notes. The pattern is the coaching kata described by Mike Rother (Toyota Kata, McGraw-Hill, 2009);
+"kata" is his word, not an official Toyota procedure, so do not say "Toyota does it this way".`,
   prompts: `Two prompts carry a whole workflow. Clients that do not show MCP prompts can read their text here,
 in "prompts" below: follow it as if the user had picked the prompt.
 - matrix_artifact: build an interactive X-Matrix for a leadership meeting from get_matrix_data.

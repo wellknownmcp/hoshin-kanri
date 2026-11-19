@@ -20,6 +20,11 @@
   (`strategic_context_to_validate`). The local mode has no validation step and says so.
 - Plugin 1.3.0: the skills use the board for a review agenda and a weekly sync, record the direction of
   a KPI when they define it, and start a matrix with its written frame.
+- Plugin 1.4.0: `coach-an-initiative`, a one-to-one with the owner of an initiative. Claude asks five
+  questions, brings the facts of the matrix and of the indicator board, never proposes the step, and
+  writes the cycle in the notes of the initiative. After the coaching kata described by Mike Rother
+  (*Toyota Kata*, 2009); "kata" is his word, not an official Toyota procedure. The same guidance is in
+  `get_help` topic `coaching`, for clients without the plugin.
 
 ### Fixed
 
