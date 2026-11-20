@@ -38,7 +38,7 @@
       ],
       "documentation": "https://hoshin.app/connect-your-agent",
       "highlights": [
-        "Claude plugin with six skills (marketplace wellknownmcp/hoshin-kanri): the connector and the know-how to build a strategy, run its reviews and share it",
+        "Claude plugin with eight Agent Skills (marketplace wellknownmcp/hoshin-kanri): the connector and the know-how to build a strategy, run its reviews, coach an initiative owner and share it; each skill also installs alone",
         "show_matrix: the X-Matrix and its initiative cards drawn in the conversation as an MCP App",
         "Review cycle: get_agenda tells a recurring agent what is due; record_review keeps the decisions and a snapshot of the matrix; get_review reads it back",
         "KPI readings by period with their source, initiative sheets and KPI definitions, so every agent computes a number the same way",
