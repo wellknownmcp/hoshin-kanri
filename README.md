@@ -33,8 +33,8 @@ internal, build a cockpit, sync initiatives with Linear or Jira, and carry a pla
 (such as the morning plant pulse of Claude for Manufacturing) up to the site matrix as monthly readings,
 ideas and roadmap evidence.
 
-- **claude.ai, Claude desktop, Cowork**: Customize > Plugins > Add > Add marketplace, enter
-  `wellknownmcp/hoshin-kanri`, then add **Hoshin Kanri X-Matrix** and connect its **hoshin** connector.
+- **claude.ai, Claude desktop, Cowork**: open **Plugins** in the sidebar, choose Add, add the
+  marketplace `wellknownmcp/hoshin-kanri`, then add **Hoshin Kanri X-Matrix** and connect its **hoshin** connector.
 - **Claude Code**: `/plugin install hoshin-kanri --marketplace wellknownmcp/hoshin-kanri`
 
 Source: [`mcp-server/plugin/hoshin-kanri`](mcp-server/plugin/hoshin-kanri). Each skill is a folder with a
