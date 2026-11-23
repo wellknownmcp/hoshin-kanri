@@ -6,8 +6,8 @@ links between them, and the review cycle that keeps them alive.
 
 ## Install
 
-- **claude.ai, Claude desktop, Cowork**: Customize > Plugins > Add > Add marketplace, enter
-  `wellknownmcp/hoshin-kanri`, then add **Hoshin Kanri X-Matrix**.
+- **claude.ai, Claude desktop, Cowork**: open **Plugins** in the sidebar, choose Add, add the
+  marketplace `wellknownmcp/hoshin-kanri`, then add **Hoshin Kanri X-Matrix**.
 - **Claude Code**:
 
 ```
