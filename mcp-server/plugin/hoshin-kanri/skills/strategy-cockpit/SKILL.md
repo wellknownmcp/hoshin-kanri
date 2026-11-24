@@ -8,7 +8,7 @@ description: Build an interactive view of the Hoshin Kanri X-Matrix from hoshin.
 Hoshin keeps the data and a plain reference view; you build the presentation the person wants from the
 same data. For a quick look in the conversation, `show_matrix` is enough. For a richer, interactive view:
 
-1. `get_matrix_data` (pass `matrix_id` when there are several matrices; `audience: "external"` if the
+1. `get_matrix_data` (give `matrix_id` when there are several matrices; `audience: "external"` if the
    cockpit will be shown outside the organization). It returns every element, the correlations with their
    strength, the KPI readings by period with their status, the initiative sheets, the KPI definitions, and
    the completeness score. Do not use `get_matrix_summary`: it truncates. For a table of the KPIs month by

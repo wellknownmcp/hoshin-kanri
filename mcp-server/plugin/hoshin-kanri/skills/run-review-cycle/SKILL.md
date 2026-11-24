@@ -7,7 +7,7 @@ description: Prepare, run and record a Hoshin Kanri strategy review in hoshin.ap
 
 ## Know where things stand
 
-1. `whoami`, then `list_matrices` (pass `matrix_id` when there are several).
+1. `whoami`, then `list_matrices` (give `matrix_id` when there are several).
 2. `get_agenda`: today's date (UTC), the reviews ahead, the last reviews and their decisions, and what is
    due: reviews to prepare or record, cadences with no review scheduled, KPIs missing the reading of the
    last closed period, initiatives without an update, overdue actions.

@@ -21,7 +21,7 @@ lines of the north quadrant serve the vision; they are not the vision.
    edit. One connection acts in one organization. If the strategy belongs to another organization the
    person has, tell them to add a second connector and choose that organization on the consent screen;
    never put it in the wrong one.
-2. Call `list_matrices`. As soon as there is more than one, pass `matrix_id` to every tool.
+2. Call `list_matrices`. As soon as there is more than one, give `matrix_id` to every tool.
 3. Read before you write: `get_matrix_data` shows what is already there. Do not duplicate elements.
 
 ## The frame first
@@ -75,7 +75,7 @@ A target handed down without an answer from the people who carry it is rarely re
    (`upsert_cadence` with a name, the type `catchball`, a frequency and an operational level), then
    `schedule_review`; for a single round, a date agreed with the person is enough.
 3. Write what came back in the person's words (`update_element_status` with `notes`), adjust targets and
-   owners as they decide, then pass the lines they confirm to `status: "active"`.
+   owners as they decide, then move the lines they confirm to `status: "active"`.
 4. Read the owners in `get_matrix_data`: when one person carries most of the initiatives, say it. Whether
    that is a problem is the person's call.
 

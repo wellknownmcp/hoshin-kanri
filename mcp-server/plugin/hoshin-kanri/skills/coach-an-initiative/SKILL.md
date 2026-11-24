@@ -16,7 +16,7 @@ from*). The five questions below are worded for a Hoshin initiative; they are ou
 ## Before you ask anything
 
 1. `whoami`, then `list_matrices` if there are several matrices.
-2. `get_matrix_data` for the matrix (pass `matrix_id`): find the initiative (south), read its sheet (why,
+2. `get_matrix_data` for the matrix (with `matrix_id`): find the initiative (south), read its sheet (why,
    expected result, the KPI it is measured by, milestones, next action, health, blockers) and its last
    updates.
 3. `get_kpi_board` for the same matrix: the readings of the KPI the initiative is measured by, month by
