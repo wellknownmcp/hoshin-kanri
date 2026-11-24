@@ -1,11 +1,13 @@
 {
   "name": "hoshin-kanri",
   "displayName": "Hoshin Kanri X-Matrix",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Run your strategy as an X-Matrix with Claude: build the matrix, keep KPI readings and initiative sheets up to date, prepare and record reviews, and share it outside without leaking what is internal. Uses the Hoshin Kanri connector (hoshin.app).",
   "author": { "name": "Animam Technologies", "url": "https://hoshin.app" },
   "homepage": "https://hoshin.app",
   "repository": "https://github.com/wellknownmcp/hoshin-kanri",
   "license": "MIT",
+  "privacyPolicyUrl": "https://hoshin.app/legal/privacy",
+  "icon": ".claude-plugin/icon.png",
   "keywords": ["hoshin-kanri", "x-matrix", "strategy", "okr", "lean", "kpi", "mcp"]
 }

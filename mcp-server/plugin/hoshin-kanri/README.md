@@ -36,5 +36,5 @@ it saw.
 
 The plugin itself stores nothing and sends nothing. The connector sends what you and Claude write to your
 hoshin.app organization (hosted in France, OVH) and reads it back, with the rights of the person who
-connected it. Privacy policy: https://hoshin.app/legal/privacy. The connector's server is open source (MIT):
+connected it. Privacy policy: <https://hoshin.app/legal/privacy>. The connector's server is open source (MIT):
 https://github.com/wellknownmcp/hoshin-kanri.
